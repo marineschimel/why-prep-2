@@ -1,0 +1,490 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{bm}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{xcolor}
+\usepackage{bm}
+\usepackage{mathtools}
+\usepackage{placeins}
+\usepackage{libertine}
+\hypersetup{
+    colorlinks,
+    linkcolor={red!50!black},
+    citecolor={red!50!black},
+    urlcolor={blue!80!black}
+}
+\renewcommand\b\bm
+\newcommand\x{\b{x}}
+\newcommand\xstar{\b{x}^\star}
+\newcommand\xsp{\b{xsp}}
+\title{Differentiating through iLQR}
+\author{Ta-Chu Kao \and Marine Schimel}
+\begin{document}
+\maketitle
+\section{Introduction}
+
+In this short note, we discuss how to differentiate through an LQR solution.
+We provide an alternative derivation of the adjoint of LQR parameters to \citep{amos2018differentiable}.
+
+\section{LQR optimality conditions}
+%
+The finite-horizon, discrete-time LQR problem involves minimizing:
+%
+\begin{equation}
+\label{eq:eq1}
+    \mathcal{J} = \sum_{t=0}^{T} \big (\frac{1}{2} \bm{\tau}_t^T \b{C}_t \bm{\tau}_t + \b{c}_t^T \b{\tau}_t \big )
+\end{equation}
+%
+subject to constraints on its dynamics
+%
+\begin{equation}
+    \b{x}_{t+1}=\b{F}_t \b{\tau}_t + \b{f}_t,
+\end{equation}
+%
+where $\bm{\tau}_t = \begin{bmatrix}\x_t^T & \b{u}_t^T\end{bmatrix}^T$
+is a vector that stacks the states $\x_t$ and inputs $\bm{u}_t$ of the system, $\b{F}_t = \begin{bmatrix} \b{A}_t & \b{B}_t \end{bmatrix}$ contains the transition matrix $\b{A}_t$ and input channels $\b{B}_t$ and $\b{f}_t$ is a state and input-independent input.
+To solve this problem, we write down the Lagrangian:
+%
+\begin{equation}
+    \begin{split}
+        \mathcal{L}=\sum_{t=0}^{T}
+        \big (
+        \frac{1}{2} \b{\tau}_t^{T} \b{C}_t \b{\tau}_t + \b{c}_t^T \b{\tau}_t
+        \big )
+        + \sum_{t=0}^{T-1}\b{\lambda}^T_{t+1}(\b{F}_t \b{\tau}_t + \b{f}_t - \b{x}_{t+1}),
+    \end{split}
+\end{equation}
+%
+where $\b{\lambda}_1, \b{\lambda}_2, \cdots, \b{\lambda}_{T}$ are adjoint (dual) variables that enforces the dynamic constraint.
+Differentiating with respect to $\b{\lambda}_t$ and $\b{\tau}_t$ enables us to obtain the KKT conditions :
+%
+\begin{align}
+    \label{eq:kkt_equations}
+    %
+    \begin{bmatrix} \b{I} & \b{0} \end{bmatrix}
+    (\b{C}_t \b{\tau}_t + \b{c}_t) +  \b{F}_t^T\b{\lambda}_{t+1} -
+    \b{\lambda}_{t}
+                   & = \b{0} \\
+    \b{F}_t \b{\tau}_t + \b{f}_t -
+    \begin{bmatrix} \b{I} & \b{0}\end{bmatrix}
+    \b{\tau}_{t+1} & = \b{0} \\
+    \b{C}_{T} \b{\tau}_{T} + \b{c}_{T} -
+    \begin{bmatrix}  \b{I} & \b{0} \end{bmatrix}^T \b{\lambda}_{T}
+                   & = \b{0} \\
+    \b{x}_{\text{init}} -
+    \begin{bmatrix} \b{I} & \b{0}\end{bmatrix}
+    \b{\tau}_{0}   & = \b{0}
+\end{align}
+%
+Rearranging, we can rewrite the KKT conditions in matrix form as:
+%
+\begin{equation}
+    \label{eq:KKT}
+    \underbrace{%
+        \begin{pmatrix}
+            \ddots &         &                                                                             \\
+                   & \b{C}_t & \b{F}_t^T              &                       &                            \\
+                   & \b{F}_t & \b{0}                  & [-\b{I} \; \, \b{0} ] &               &            \\
+                   &         & [-\b{I} \; \, \b{0}]^T & \b{C}_{t+1}           & \b{F}^T_{t+1} &            \\
+                   &         &                        & \b{F}_{t+1}           & \b{0}                      \\
+                   &         &                        &                       &               &   & \ddots
+        \end{pmatrix}}_{\b{K}}
+    \underbrace{\begin{pmatrix}
+            \vdots            \\
+            \b{\tau}_t        \\
+            \b{\lambda}_{t+1} \\
+            \b{\tau}_{t+1}    \\
+            \b{\lambda}_{t+2} \\
+            \vdots
+        \end{pmatrix}}_{\b{y}}
+    = - \underbrace{\begin{pmatrix}
+            \vdots      \\
+            \b{c}_t     \\
+            \b{f}_t     \\
+            \b{c}_{t+1} \\
+            \b{f}_{t+1} \\
+            \vdots
+        \end{pmatrix}}_{\b{z}}
+\end{equation}
+%
+These optimality conditions are satisfied for the solution to the optimization problem $\b{y}^\star = (\b{\tau}^\star_0, \cdots, \b{\tau}^\star_T, \b{\lambda}_{1}^\star, \cdots \b{\lambda}_T^\star)$.
+Naively, one might hope to find $\b{y}^\star$ by solving this system of linear equations and computing directly:
+%
+\begin{equation}
+    \label{eq:lqr_backsolve}
+    \b{y}^\star = -\b{K}^{-1}\b{z}.
+\end{equation}
+%
+However, this quickly becomes infeasible as $\b{K}$ grows with long-time horizons.
+Luckily, there is a well-known solution to the LQR problem based on dynamic programming, which inverts $\b{K}$ implicitly and solves $\b{y}^\star$ in linear-time \citep{Anderson2007}.
+
+\subsection{Differentiating through the LQR solver}
+Differentiating through an LQR solve boils down to differentiation through the backsolve in $\Cref{eq:lqr_backsolve}$.
+In the following, we denote the adjoint of parameter $\b{\theta}$ as $\bar{\b{\theta}}$.
+%
+From \citep{Giles2008}, we know that the adjoint of the backsolve operation is given by:
+%
+\begin{align}
+    \label{eq:xbar}
+    \bar{\b{z}} & = - \b{K}^{-T} \bar{\b{y}},                             \\
+    \label{eq:kbar}
+    \bar{\b{K}} & = -\b{K}^{-T} \bar{\b{y}} \b{y}^T = \bar{\b{x}}\b{y}^T.
+\end{align}
+%
+We note that \Cref{eq:xbar} has the same form as \Cref{eq:lqr_backsolve}, which means we can compute $\bar{\b{z}} = (\cdots, \bar{\b{c}}_t, \bar{\b{f}}_t, \cdots)^T$ by solving another LQR problem.
+After solving for $\bar{\b{z}}$, we can then compute $\bar{\b{K}}$ as an outer-product of  $\bar{\b{z}}$ with $\b{y}$ to get:
+%
+\begin{align}
+      & \underbrace{
+        %
+        \begin{pmatrix}
+            \ddots &                       &                         &                           &                             &        \\
+                   & \bar{\b{K}}_{\b{C}_t} & \bar{\b{K}}_{\b{F}_t^T} &                           &                             &        \\
+                   & \bar{\b{K}}_{\b{F}_t} &                         &                           &                             &        \\
+                   &                       &                         & \bar{\b{K}}_{\b{C}_{t+1}} & \bar{\b{K}}_{\b{F}^T_{t+1}} &        \\
+                   &                       &                         & \bar{\b{K}}_{\b{F}_{t+1}} &                             &        \\
+                   &                       &                         &                           &                             & \ddots
+            %
+        \end{pmatrix}}_{\bar{\b{K}}} \\
+    = &
+    \begin{pmatrix}
+        \vdots            \\
+        \bar{\b{c}}_t     \\
+        \bar{\b{f}}_t     \\
+        \bar{\b{c}}_{t+1} \\
+        \bar{\b{f}}_{t+1} \\
+        \vdots
+    \end{pmatrix}
+    \begin{pmatrix}
+        \cdots
+         & {\b{\tau}_t^\star}^T
+         & {\b{\lambda}_{t+1} ^\star}^T
+         & {\b{\tau}_{t+1}^\star}^T
+         & {\b{\lambda}_{t+2}^\star}^T
+         & \cdots
+    \end{pmatrix}
+    \\
+    \label{eq:kbar_outer_product}
+    = &
+    \begin{pmatrix}
+        \ddots &                                        &                                       &                                              &                                               &        \\
+               & \bar{\b{c}}_t {\b{\tau}_t^\star}^T     & \bar{\b{c}}_t {\b{\lambda}_t^\star}^T &                                              &                                               &        \\
+               & \bar{\b{f}}_{t+1} {\b{\tau}_t^\star}^T &                                       &                                              &                                               &        \\
+               &                                        &                                       & \bar{\b{c}}_{t+1}{\tau_{t+1}^\star}^T        & \bar{\b{c}}_{t+1} {\b{\lambda}_{t+1}^\star}^T &        \\
+               &                                        &                                       & \bar{\b{c}}_{t+1}{\b{\lambda}_{t+1}^\star}^T &                                               &        \\
+               &                                        &                                       &                                              &                                               & \ddots
+    \end{pmatrix}.
+    %
+\end{align}
+%
+Collecting all the gradients of $\bar{\b{C}}_t$ and $\bar{\b{F}}_t$ in \Cref{eq:kbar_outer_product}, we arrive at
+%
+\begin{align}
+    \bar{\b{C}}_t & = \frac{1}{2} ({\bar{\b{K}}_{\b{C}_t}} + \bar{\b{K}}_{\b{C}_t}^T)
+    = \frac12 (\bar{\b{c}}_t {\b{\tau}_t^\star}^T + \b{\tau}_t^\star \bar{\b{c}}_t^T) \\
+    \bar{\b{F}}_t & = \bar{\b{K}}_{\b{F}_t} + \bar{\b{K}}_{\b{F}_t^T}^T
+    =  \bar{\b{f}}_{t+1} {\b{\tau}_t^\star}^T + \b{\lambda}_{t+1}^\star \bar{\b{c}}_t^T.
+\end{align}
+%
+Note that we have symmetrized the adjoint of $\b{C}_t$, which ensures that $\b{C}_t$ remains symmetric after each gradient update.
+Note that the antisymmetric part of $\b{C}_t$ does not contribute to the LQR cost $\mathcal{J}$.
+
+\section{Iterative LQR}
+Iterative LQR (iQLR) \citep{li2004iterative,Tassa2014} non-linear optimal control problems by (i) linearizing the dynamics locally around some initial trajectory $\b{\tau}^k$, (ii) performing a quadratic approximation to the stage cost around $\b{\tau}^k$, (iii) and solves LQR for the local approximations.
+After each LQR update, we have a new trajectory $\b{\tau}^{k+1}$ and the process repeats until convergence to some locally optimal trajectory $\b{\tau}^\star$.
+Specifically, iLQR minimizes 
+%
+\begin{equation}
+    \mathcal{J} = \sum_{t=0}^{T-1} r_\theta(\b{x}_t,\b{u}_t,t)
+\end{equation}
+%
+subject to the dynamical constraint
+%
+\begin{equation}
+    \b{x}_{t+1} = f_\theta(\b{x}_t, \b{u}_t, t)
+\end{equation}
+%
+by making the following approximations around some trajectory $\b{\tau}_{0:T}$:
+%
+\begin{equation}
+    f_\theta(\delta\b{x}_t, \delta\b{u}_t, t) \approx \b{A}_t \delta\b{x}_t + \b{B}_t \delta\b{u}_t
+\end{equation}
+%
+and
+%
+\begin{equation}
+    \begin{split}
+    r_\theta(\delta\b{x}_t, \delta\b{u}_t, t) \approx
+    \frac{1}{2}
+    (\delta\b{x}^T_t \b{Q}^{\b{xx}}_t \delta\b{x}_t
+    + 2 \delta\b{x}^T_t \b{Q}^{\b{xu}}_t \delta\b{u}_t
+    + \delta\b{u}^T_t \b{Q}^{\b{uu}}_t \delta\b{u}_t)\\
+    + \delta\b{x}^T \b{q}^{\b{x}}_t 
+    + \delta\b{u}^T \b{q}^{\b{u}}_t
+    \end{split}
+\end{equation}
+%
+
+\section{Ocaml implementation}
+The input to the forward pass are $\b{x}_0$, a sequence of inputs $\b{u}_0 \cdots \b{u}_{T-1}$, the transition dynamics $f_\theta(\b{x}_t, \b{u}_t, t)$, and running loss function $r_\theta(\b{x}_t, \b{u}_t, t)$ and final loss function $v_\theta(\b{x}_{T-1})$.
+At every step, we linearize the dynamics as:
+The output is the optimal trajectory $\b{\tau}_0, \b{\tau}_1, \cdots \b{\tau}_{T-1}$.
+We break the LQR solve into two maps $g_1$ and $g_2$:
+%
+\begin{equation}
+    \begin{aligned}
+        \b{x}_0, \theta \\
+        (\b{u}_0, \cdots, \b{u}_{T-1} \text{ not optimized})
+    \end{aligned}
+    \xrightarrow{\qquad g_1 \qquad}
+    \begin{aligned}
+        \b{x}_0, \b{x}^\star_1, \cdots, \b{x}^\star_{T-1} \\
+        \b{u}^\star_0, \cdots, \b{u}^\star_{T-1}          \\
+        \b{A}_{0}, \cdots, \b{A}_{T-2}                    \\
+        \b{B}_{0}, \cdots, \b{B}_{T-2}                    \\
+        \b{q}_{0}^{\x}, \cdots, \b{q}_{T-1}^{\b{x}}       \\
+        \b{q}_{0}^{\b{u}}, \cdots, \b{q}_{T-1}^{\b{u}}    \\
+        \b{Q}_{0}^{\b{xu}}, \cdots, \b{Q}_{T-1}^{\b{xu}}  \\
+        \b{Q}_{0}^{\b{uu}}, \cdots, \b{Q}_{T-1}^{\b{uu}}  \\
+        \b{Q}_{0}^{\b{xx}}, \cdots, \b{Q}_{T-1}^{\b{xx}}  \\
+        \b{\lambda}_0^\star, \cdots, \b{\lambda}_T^\star
+    \end{aligned}
+\end{equation}
+%
+The second map:
+%
+\begin{equation}
+    \begin{aligned}
+        \b{x}_0, \b{x}^\star_1, \cdots, \b{x}^\star_{T-1} \\
+        \b{u}^\star_0, \cdots, \b{u}^\star_{T-1}          \\
+        \b{A}_{0}, \cdots, \b{A}_{T-1}                    \\
+        \b{B}_{0}, \cdots, \b{B}_{T-1}                    \\
+        \b{q}_{0}^{\b{x}}, \cdots, \b{q}_{T-1}^{\b{x}}    \\
+        \b{q}_{0}^{\b{u}}, \cdots, \b{q}_{T-1}^{\b{u}}    \\
+        \b{Q}_{0}^{\b{xu}}, \cdots, \b{Q}_{T-1}^{\b{xu}}  \\
+        \b{Q}_{0}^{\b{uu}}, \cdots, \b{Q}_{T-1}^{\b{uu}}  \\
+        \b{Q}_{0}^{\b{xx}}, \cdots, \b{Q}_{T-1}^{\b{xx}}  \\
+        \b{\lambda}_0^\star, \cdots, \b{\lambda}_T^\star
+    \end{aligned}
+    \xrightarrow{\qquad g_2 \qquad}
+    \begin{aligned}
+        \b{x}_0, \b{x}^\star_1, \cdots, \b{x}^\star_{T-1} \\
+        \b{u}^\star_0, \cdots, \b{u}^\star_{T-1}
+    \end{aligned}
+\end{equation}
+%
+Identifying with the notations in the last section, we have
+%
+\begin{equation}
+    \b{C}_t =
+    \begin{pmatrix}
+        \b{Q}_t^{\b{xx}} & \b{Q}_t^{\b{xu}} \\
+        \b{Q}_t^{\b{ux}} & \b{Q}_t^{\b{uu}}
+    \end{pmatrix},
+    \quad
+    \b{F}_t =
+    \begin{pmatrix}
+        \b{A}_t & \b{B}_t \\
+    \end{pmatrix}.
+\end{equation}
+%
+Regarding $\b{c}_t$, one needs to be careful with the way in which it is defined. Indeed, one should note that these are defined from \Cref{eq:eq1}
+as $ \mathcal{J} = \sum_{t=0}^{T} \big (\frac{1}{2} \bm{\tau}_t^T \b{C}_t \bm{\tau}_t + \b{c}_t^T \b{\tau}_t \big )$. Therefore, when considering the local LQR problem that arises from perturbing around the trajectory $\hat{tau}$, our variable of interest in $\delta\tau$ and the cost is written as 
+$\delta\mathcal{J} (\delta_u) =  \sum_{t=0}^{T} \big (\frac{1}{2} \bm{\delta\tau}_t^T \nabla^2 \mathcal{J}_t (\tau) \b{\delta\tau}_t + \nabla \mathcal{J}_t^T \b{\delta\tau}_t \big )$
+and thus $\b{c}_t = (\b{qt}_x, \b{qt}_u)$. However, when we are considering the variable of interesting to be $\tau$ and not $\delta\tau$, then one needs
+to expand $\delta\tau = \tau-\tau_i$ and we then obtain $\b{c}_tx =   \b{qt}_x -  x\b{Q}_t^{\b{xx}} - u \b{Q}_t^{\b{ux}}$
+and $\b{c}_tu =   \bm{qt}_u -  u\b{Q}_t^{\b{uu}} - x \b{Q}_t^{\b{xu}}$.
+The full iLQR algorithm is essentially $g_2 \circ g_1$, where $g_2$ is a dummy map that allows to provide the gradients with respect to $\{\b{A}_t\}$, $\{\b{B}_t\}$, $\{\b{Q}^{\b{x}}_t\}$, $\{\b{Q}^{\b{u}}_t\}$, $\{\b{Q}^{\b{xu}}_t\}$, $\{\b{Q}^{\b{uu}}_t\}$, and $\{\b{Q}^{\b{xx}}_t\}$, and thus backpropate the gradients to the parameters $\theta$.
+We also define a third map $g_3$ that helps us propagrate the gradients from the output of $g_1$ to the parameter $\theta$.
+%
+\begin{equation}
+    \begin{aligned}
+        \theta                                            \\
+        (\text{not optimised}                             \\
+        \b{x}_0, \b{x}^\star_1, \cdots, \b{x}^\star_{T-1} \\
+        \b{u}^\star_0, \cdots, \b{u}^\star_{T-1})         \\
+    \end{aligned}
+    \xrightarrow{\qquad g_3 \qquad}
+    \begin{aligned}
+        \b{A}_{0}, \cdots, \b{A}_{T-1}                   \\
+        \b{B}_{0}, \cdots, \b{B}_{T-1}                   \\
+        \b{Q}_{0}^{\b{x}}, \cdots, \b{Q}_{T-1}^{\b{x}}   \\
+        \b{Q}_{0}^{\b{u}}, \cdots, \b{Q}_{T-1}^{\b{u}}   \\
+        \b{Q}_{0}^{\b{xu}}, \cdots, \b{Q}_{T-1}^{\b{xu}} \\
+        \b{Q}_{0}^{\b{uu}}, \cdots, \b{Q}_{T-1}^{\b{uu}} \\
+        \b{Q}_{0}^{\b{xx}}, \cdots, \b{Q}_{T-1}^{\b{xx}} \\
+    \end{aligned}
+\end{equation}
+
+
+\subsection{Amos et al.'s derivation}
+Another way of viewing how this solution arises, which makes explicit the way in which it can be formulated as another LQR problem, is by directly differentiating the KKT conditions. This amounts to exactly the same procedure as presented in Section 2.3, although presented slightly differently.
+The variables of interest when differentiating through the solver are $\nabla_\theta l$ where $\theta$ describes the variables C, F, f, c. One can use obtain this by starting with the set of equations \Cref{eq:kkt_equations} and then performing implicit differentiation of these, as in \cite{amos2017optnet}. This then enables to relate the set of variables $(\tau,\lambda)$ to their conjugates $(C,F,c,f)$.
+We then end up with
+%
+\begin{equation}
+    \begin{aligned}
+        dC_t \tau_t^* + C_t d\tau_t + dF_t^T \lambda_t^* + F_t^T d\lambda_t = - dc_t
+        \\ dF_t \tau_t^* + F_t d\tau^* - d\tau_{t+1}^* = -df_t
+    \end{aligned}
+\end{equation}
+%
+which one can rewrite as
+%
+\begin{equation}
+    \label{eq:4}
+    K \begin{pmatrix}
+        \vdots \\
+        d\tau_t
+        \\d\lambda_t
+        \\ d\tau_{t+1}
+        \\d\lambda_{t+1}
+        \\ \vdots
+    \end{pmatrix} =
+    \begin{pmatrix} \vdots                                                       \\
+        -dc_t - \tau_t^* dC_t - \lambda_t^* dF_t                     \\
+        -dF_t \tau_t^*-df_t                                          \\
+        -dc_{t+1} - \tau_{t+1}^* dC_{t+1} - \lambda_{t+1}^* dF_{t+1} \\
+        -dF_{t+1} \tau_{t+1}^*-df_{t+1}                              \\
+        \vdots
+    \end{pmatrix}
+\end{equation}
+%
+From there, we can directly form the Jacobians wrt the different parameters $\theta$. Indeed, we have for instance, assuming we are interested in $\frac{\partial \tau_t}{\partial C_t}$,
+\begin{equation}
+    K \begin{pmatrix}
+        \vdots \\
+        d\tau_t
+        \\0
+        \\0
+        \\0
+        \\ \vdots
+    \end{pmatrix} = \begin{pmatrix}\vdots         \\
+        -\tau_t^* dC_t \\
+        0              \\
+        0              \\
+        0              \\
+        \vdots
+    \end{pmatrix}
+\end{equation}
+However, we don't actually need to directly compute the Jacobians, but only their product with $\nabla_\tau l |_{\tau^*}$. If we then define the $\delta_x$ variables as
+\begin{equation}
+    \label{eq:delta_eq}
+    \begin{pmatrix}
+        \vdots \\
+        \delta_{\tau*_t}
+        \\ \delta_{\lambda*_t}
+        \\ \vdots
+    \end{pmatrix} = -K^{-1}\begin{pmatrix}\vdots            \\
+        \nabla_{\tau_t }l \\
+        0                 \\
+        \vdots
+    \end{pmatrix}
+\end{equation}
+one can see how combining \Cref{eq:4} and \Cref{eq:13} yields expressions for the derivatives of the loss wrt to the different variables.
+\begin{equation}
+    \label{eq:13}
+    \nabla_{C_t}\tau_t \otimes \nabla_{\tau_t}l  = -K^{-1}\tau_t^*
+    \otimes \nabla_{\tau_t }l \implies  \nabla_{C_t}l  = \delta^*_{\tau_t} \otimes \tau^*_t
+\end{equation}
+Similarly :
+\begin{equation}
+    \begin{aligned}
+        K \begin{pmatrix}
+            \vdots \\
+            d\tau_t
+            \\d\lambda_t
+            \\0
+            \\0
+            \\ \vdots
+        \end{pmatrix} = \begin{pmatrix}\vdots            \\
+            -\lambda_t^* dF_t \\
+            -\tau_t^* dF_t    \\
+            0                 \\
+            0                 \\
+            \vdots
+        \end{pmatrix} \implies \nabla_{F_t}l=\delta^*_{\lambda_{t}} \otimes \tau^*_t + \lambda^*_{t} \otimes \delta^*_{\tau_{t}}
+    \end{aligned}
+\end{equation}
+and
+\begin{equation}
+    K \begin{pmatrix}
+        \vdots \\
+        d\tau_t
+        \\d\lambda_t
+        \\0
+        \\0
+        \\ \vdots
+    \end{pmatrix} = \begin{pmatrix}\vdots \\
+        -dc_t  \\
+        -df_t  \\
+        0      \\
+        0      \\
+        \vdots
+    \end{pmatrix} \implies
+    \begin{aligned}
+        \\\nabla_{c_t}l=\delta^*_{\tau_t}
+        \\\nabla_{f_t}l=\delta^*_{\lambda_t}
+    \end{aligned}
+\end{equation}
+\\For the $\nabla_{C_t}l$ term, as the loss term in symmetric in $C_t$ we symmetrize the gradients by using $\nabla_{C_t}l=0.5(\delta^*_{\tau_t} \otimes \tau^*_t + \tau^*_t \otimes \delta^*_{\tau_t} )$.
+\\Finally, what we need is a way to compute the $ \bm{\delta}$ vector efficiently, and we will then have all the derivatives by taking the product of this and our state vector. The key here is to notice that \Cref{eq:delta_eq} corresponds to another set of KKT equations similat to the ones for the initial LQR problem, although with $c_t \rightarrow \nabla_{\tau_t*}l$ and $f_t \rightarrow 0$. Thus, computing $\bm{\delta}$ can be done efficiently by solving this new LQR problem.
+\\One should note that while Section 2.3 and 2.4 recover the same results, these differ slightly from the ones from \cite{amos2018differentiable} in $\nabla_{F_t}l$.
+
+\section{Differentiable iLQR}
+While the approach presented previously is developed in the case of LQR, one can extend it to iLQR \citep{li2004iterative}. Indeed, in the case of iLQR, we have a similar setup, but the cost function is not necessarily quadratic and the dynamics not necessarily linear. To solve this system, one needs to do a linear approximation to the dynamics at each time step, and a quadratic approximation to the cost : it then becomes an LQR problem. To ensure convergence to the right solution one needs to run several iterations of this, updating the states, inputs, and approximations to cost and dynamics at every iteration. For smooth dynamics, a fixed point usually exists and the algorithm converges in a few iterations, after which one can apply the differentiable LQR method. The overall approach is summarized in Fig. \Cref{fig:my_label} : while this is described for MPC, a single MPC step corresponds to the iLQR optimization.
+%
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width = \textwidth]{pseudo_code.png}
+    \caption{Pseudo-code from \citep{amos2018differentiable}}
+    \label{fig:my_label}
+\end{figure}
+%
+\section{Interesting other uses?}
+%
+Other ideas : A possible use case of the derivative of a model predictive controller is imitation learning, where a subset of {cost function, system dynamics, constraints} are learned from observations of a system being controlled by an ‘expert’. This could be a cool application, as well as more general applications where we need to be learning the dynamics as we go (e.g in an RL-like setting)?
+
+
+
+\bibliographystyle{apalike}
+\bibliography{differentiate}
+
+\end{document}
+\end{document}
+
+
+The LQR algorithm is thus usually used as a tool to find the best way of evolving in an environment whose dynamics are known. However, differentiating through LQR enables to also optimize the parameters which are usually kept fixed (F,f,C,c) and thus update the model of the environment, such that even our optimal parameters get better. These can more generally be thought as a set $\theta$ parametrizing the mode : in order to learn the model we theCrefore need to be able to compute the derivatives of a loss function $l$ w.r.t $\theta$, $\frac{\partial l}{\partial \theta} = \frac{\partial l}{\partial \tau
+    ^*_{1:T}}\frac{\partial \tau
+    ^*_{1:T}}{\partial \theta}$. The paper presents an efficient way of computing these.
+\\This relies on the following ideas : we can write a Lagrangian for the system, which enables us to obtain a set of equations satisfied by the optimal trajectory $\tau^*_{[1:T]}$ and its adjoint $\lambda^*_{[1:T]}$ in the system, called the KKT conditions. Using implicit differentiation on this set of equations then enables to relate infinitesimal changes in the different variables. Then, one can relate the desired gradients $\nabla_\theta l$ to variables which can be obtained as the solution of another LQR problem. The following subsections detail the various steps enabling to do this.
+%
+
+The notation $\b{\tau}^*$ is used to represent the trajectory which minimizes the loss function, with all other parameters ($\b{F}_t,  \x_{\text{init}}, \b{f}_t, \b{C}_t, \b{c}_t$) fixed.
+
+\subsection{Formulating the LQR problem as a set of KKT conditions}
+
+The set of  $\tau^*$ can be found using \Cref{eq:forward} :
+\begin{equation}
+    \begin{aligned}
+        \label{eq:forward}
+        \tau_{init,(bottom)}^*=x_{init}
+        \\C_{t,(bottom)}^T\tau_{t}^*+ c_{t,(bottom)} +\lambda_{t,(bottom)}^T
+    \end{aligned}
+\end{equation}
+and the $\lambda^*$ can next be found by propagating back from $\lambda_T$ using \Cref{eq:lambdas}.
+\begin{equation}
+    \begin{aligned}
+        \label{eq:lambdas}
+        C_{T,(top)} \tau_T^* + F_{T,(top)}^T \lambda_T^* = - c_T
+        \\ \lambda_t^* = F_{t,(top)}^T\lambda_{t+1}^*+ C_{t,(top)} \tau_t^* +c_{t,(top)}
+    \end{aligned}
+\end{equation} where the notation $X_{t,(top)}$, $X_{t,(bottom)}$ Crefers to the fact that we only use the part of the matrix acting on the state $x^*_t$,
+and where \Cref{eq:forward} and \Cref{eq:lambdas} are found by differentiating $\mathcal{L}$ w.r.t $x_t$ and $u_t$.
+
+
