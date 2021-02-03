@@ -5,10 +5,12 @@ open Lib
 module T = Core.Time
 open Defaults
 open Printf
-module A = Analysis
+module A = Analysis_funs
 
 let _ = Printexc.record_backtrace true
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
+
+let in_dir s = Printf.sprintf "%s/%s" dir s
 
 (* let num_init = Cmdargs.(get_int "-init" |> force ~usage:"-init [init number]") *)
 let net = Cmdargs.(get_string "-net" |> force ~usage:"-net [dir to save in]")
@@ -87,7 +89,7 @@ let evaluate
     let __c = AD.pack_arr c
   end
   in
-  let module P = Prep.Make_4D (PT) (Costs.C_Running_4D (PT)) in
+  let module P = Prep.Make (PT) (Costs.C_Running (PT)) in
   let module I = Ilqr.Default.Make (P) in
   let __w = AD.pack_arr PT.w in 
   let angles_to_x x0 us =
@@ -142,7 +144,7 @@ let evaluate
           (Mat.concatenate
              ~axis:0
              (Mat.map_rows
-                (fun x -> Mat.(transpose (PT.c *@ transpose x)))
+                (fun x -> Mat.(transpose (PT.c *@ (AD.unpack_arr (g (AD.pack_arr (transpose x)))))))
                 (Mat.get_slice [ []; [ 4; PT.n - 1 ] ] traj)));
         AD.unpack_arr (angles_to_x x0 us)
         |> Mat.save_txt
@@ -241,18 +243,18 @@ let _dir_rad =  "big_soc" in
  in let null_c = Linalg.D.null c in 
  let _ = Printf.printf "%i %i %!" (Mat.row_num null_c) (Mat.col_num null_c) in 
 let _x_init = Mat.(null_c *@ (gaussian ~sigma:0.2 198 1)) |> Mat.transpose |> AD.pack_arr in*) 
- Array.map (fun _ ->
+ Array.map (fun i ->
   (* let w = Mat.load_txt (Printf.sprintf "results_c/%s/alpha_%i/w" net _alpha) in
   let c = Mat.load_txt (Printf.sprintf "results_c/%s/alpha_%i/c" net _alpha) in *)
   (* let w = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/w" net size_inputs) in
   let c = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/c" net size_inputs) in *)
-  let w = Mat.load_txt (Printf.sprintf "data/w_rec" ) in
-  let c = Defaults.__c in 
+  let w = Mat.load_txt ((in_dir "w_final") ) in 
+  let c = Mat.load_txt ((in_dir "c_final") ) in 
   (* let c = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/c" net size_inputs) in *)
     let x0 =
     AD.Maths.(concatenate ~axis:1 [| initial_theta; AD.Mat.zeros 1 n |])
   in Array.mapi
-    (fun i t ->
+    (fun _ t ->
       evaluate
         ~x0
         ~t_mov:0.4
@@ -261,11 +263,11 @@ let _x_init = Mat.(null_c *@ (gaussian ~sigma:0.2 198 1)) |> Mat.transpose |> AD
         ~target:[| Mat.row targets i|]
         ~c
         ~w
-        ~r_coeff:1.
-        ~qs_coeff:0.1
+        ~r_coeff:1E-3
+        ~qs_coeff:1.
         ~annealing:(false,0.)
-        (Printf.sprintf "reach_%i" (succ i)))
+        (Printf.sprintf "final"))
         (* (Printf.sprintf "%s/compound_%i%i" net i j)) *)
        
-    [|0.6|] )
-    [|0;1;2;3;4;5;6|]
+    [|0.;0.05;0.1;0.2;0.5;0.6|] )
+    [|0|]

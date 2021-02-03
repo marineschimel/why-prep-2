@@ -1,7 +1,5 @@
 (executables
- (names typ prep analyze_prep param_search analysis run costs lara
-   entanglement jpca toy_data modes eigenvalues gather fixed_points
-   end_to_end obs_analysis comp_tprep proj_all analyze_bc)
+ (names typ prep run costs end_to_end param_search)
  (libraries owl owl-ode owl-ode-sundials cmdargs owl-opt owl-opt-lbfgs arm
    ilqr lib core)
  (preprocess

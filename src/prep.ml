@@ -247,7 +247,7 @@ C.rl_u
     let xs = AD.Maths.get_slice [ []; [ 0; size_net - 1 ] ] xs in
     let xst = AD.Maths.transpose xs in
     let s = Arm.pack_state thetas in
-     let __a = AD.Maths.((((AD.pack_arr P.w)) - (AD.Mat.eye size_net))/F tau) in 
+     let __a x = AD.Maths.((((AD.pack_arr P.w))*@(g x) - (AD.Mat.eye size_net)*@x)/F tau) in 
     let t = AD.Maths.(F (float_of_int k)*__dt) in 
     let _switch = if t < AD.F P.t_prep then AD.F 1. else AD.F 1. in 
     let _input_switched =
@@ -255,7 +255,7 @@ C.rl_u
       if t < F t_prep then AD.F 1. else AD.F 1.
     in
   let dx =
-      AD.Maths.(((__a *@ xst) + (Defaults.__b *@ transpose u * _input_switched)) * __dt)
+      AD.Maths.(((__a xst) + (Defaults.__b *@ transpose u * _input_switched)) * __dt)
       |> AD.Maths.transpose
     in
     let tau = AD.Maths.(__c *@ g xst) |> AD.Maths.transpose in
@@ -282,7 +282,7 @@ in
     
     let nminv = AD.Maths.(neg (minv ~x)) in
     let m21, m22 = ms ~x in
-    let __ap = AD.Maths.((((AD.pack_arr P.w)) - (AD.Mat.eye size_net))/F tau) in  
+    let __ap x = AD.Maths.((((AD.pack_arr P.w))*@(diff_g x) - (AD.Mat.eye size_net))/F tau) in  
     (*((Defaults.__w *@ diff_g x) - AD.Mat.eye P.m)*)
     let b1 =
       AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros 2 2; AD.Mat.eye 2; AD.Mat.zeros 2 size_net |]
@@ -292,7 +292,7 @@ in
           ~axis:1
           [| nminv *@ m21; nminv *@ m22; neg AD.Maths.(nminv *@ __c *@ diff_g x) |])
     and b3 =
-      AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros size_net 2; AD.Mat.zeros size_net 2; __ap |]
+      AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros size_net 2; AD.Mat.zeros size_net 2; __ap x |]
     in
     let mat = AD.Maths.(concatenate ~axis:0 [| b1 * _switch; _switch * b2; b3 |]) in
     AD.Maths.((mat * __dt) + AD.Mat.eye n) |> AD.Maths.transpose

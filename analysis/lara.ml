@@ -6,9 +6,10 @@ module J = Jpca
 
 let _ = Printexc.record_backtrace true
 let t_prep = 500
-let n_dim = 10
+let n_dim = 2
 let n_reaches = 5
-let n_var = 6
+let n_var = 2
+
 let in_dir s = Printf.sprintf "reach_1/%s" s
 let size_prep = 400
 let size_mov = 400
@@ -16,7 +17,7 @@ let duration = 1000
 let n_shift = float_of_int t_prep /. 1000. /. sampling_dt |> int_of_float
 
 let softmax x =
-  let m = Mat.(std ~axis:0 x +$ 0.05) in
+  let m = Mat.(std ~axis:0 x +$ max' x) in
   Mat.(x / m)
 
 
@@ -66,7 +67,7 @@ let x_prep =
   let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration + 1; size_net |] in
   let f i =
     Arr.reshape
-      (Arr.get_slice [ [ i ]; [ t_prep - size_prep; t_prep - 1 ]; [] ] m)
+      (Arr.get_slice [ [ i ]; [ t_prep - size_prep; t_prep -1 ]; [] ] m)
       [| size_prep; size_net |]
   in
   Array.init n_reaches f |> Arr.concatenate ~axis:0

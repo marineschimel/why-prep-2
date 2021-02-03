@@ -15,7 +15,9 @@ let size_inputs = Cmdargs.(get_int "-b_size" |> force ~usage:"-b_size [size of i
 
 let __b = AD.Maths.(AD.Mat.eye size_inputs / F tau) 
 
-let __c= Mat.gaussian ~sigma:0.1 4 200
+(* let __c = Mat.(0.01$*(Mat.load_txt "reach_1/c")) *)
+
+let __c= Mat.gaussian ~sigma:0.1 2 200
 let n = size_net
 
 let r0 = AD.F 0.1
@@ -23,7 +25,11 @@ let r0 = AD.F 0.1
 let lambda = AD.F 0.2
 
 let g x = x
-let g_prm ~x:_x = AD.F 1.
+let g_prm ~x:_ = AD.F 1. 
+
+(* 
+let g x = AD.Maths.relu x 
+let g_prm ~x = AD.Maths.(F 0.5 *(signum x + F 1.)) *)
 
 let initial_theta = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 let target_duration = 0.4
@@ -134,11 +140,21 @@ let a_antisym_psi radius =
 
 
   
-  let cmc = AD.Mat.of_arrays [|[|1.;-1.;0.;0.|]; [|0.;0.;1.;-1.|]|]
+  (* let cmc = AD.Mat.of_arrays [|[|1.;-2.;0.;0.|]; [|0.;0.;2.;-1.|]|] *)
 
+  let cmc = AD.Mat.of_arrays [|[|0.2;-0.3;0.8;-1.;0.1;-0.01;1.;-0.5;0.2;0.5;-0.5;0.1;0.;0.;0.;0.;0.;0.;0.;0.;0.;0.;0.;0.|]; 
+  [|0.;0.;0.;0.;0.;0.;0.;0.;0.;0.;0.;0.;2.;-1.;0.1;0.8;-2.;0.3;-0.12;0.8;0.1;-0.3;0.5;-0.8|]|]
 
   let phi x = AD.Maths.(log (exp x + F 1.))
 
   let dphi y = let k = AD.Mat.row_num y in 
   AD.Mat.init_2d k k (fun i j ->
-      if i = j then (if ((AD.Mat.get y i 0) < AD.F 0.) then AD.F 0. else F 1.) else F 0.)
+      if i = j then (let x = AD.Mat.get y i 0 in  AD.Maths.(exp x/(exp x + F 1.))) else F 0.) 
+  (* let phi x = AD.Maths.(log (exp x + F 1.))
+
+  let dphi y = let k = AD.Mat.row_num y in 
+  AD.Mat.init_2d k k (fun i j ->
+      if i = j then (let x = AD.Mat.get y i 0 in  AD.Maths.(exp x/(exp x + F 1.))) else F 0.) *)
+  (* let dphi y = let k = AD.Mat.row_num y in 
+  AD.Mat.init_2d k k (fun i j ->
+      if i = j then (if ((AD.Mat.get y i 0) < AD.F 0.) then AD.F 0. else F 1.) else F 0.) *)

@@ -3,6 +3,27 @@ open Lib
 open Defaults
 
 
+(*let tests_reshape = let w = Mat.(load_txt "w") in let w_in = Mat.reshape  w [|size_net;size_net|]
+in let flat_w = Mat.reshape w_in [|1;size_net*size_net|] in let reshaped_w  = Mat.reshape flat_w [|size_net;size_net|]
+in Mat.print (Mat.(reshaped_w - w))*)
+
+let nn_evol = Array.init 26 (fun i -> nonnormality (Mat.load_txt (Printf.sprintf "from_soc/w_new_%i" (succ i)))) |> fun z -> Mat.of_array z 1 (-1)
+
+let _ = Mat.save_txt ~out:"nn_evol" nn_evol
+let w = Mat.(load_txt "w")
+
+let w_1,w_2,w_72 = Mat.load_txt "soc_50/w", Mat.load_txt "soc_50/w_new_2",  Mat.load_txt "soc_50/w_new_72"
+
+let _ = Mat.save_txt ~out:"dw_small" Mat.((w_72 - w_1))
+let _ = let module Z = Dense.Matrix.Z in
+let _, evals = Linalg.D.eig w_72 in
+let re, im =  Z.re evals, Z.im evals in
+Mat.save_txt ~out:"eigs_w_small_72" Mat.(transpose (re@=im))
+
+let _ = Printf.printf "%f %f %f" (nonnormality w) (nonnormality w_1) (nonnormality w_2)
+
+(*let _ = Printf.printf "%f %f" (Mat.l2norm' w) (Mat.l2norm' w_3)*)
+
 let _ = Printexc.record_backtrace true
 let obs_gramian a c =
   Linalg.D.lyapunov Mat.(transpose a) Mat.(neg (transpose c) *@ c)
