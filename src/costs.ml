@@ -190,6 +190,8 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
 
 
   let cost ~u ~x ~k =
+    let wp,wm = P.weighing_pm in 
+    let cost_function t = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)*F wp + sigmoid ((t - F P.t_prep) / F 2E-4)*F wm) in 
     let thetas = unpack_pos x in
     let vel = unpack_vel x in
     let _, x_state = unpack_full_state x 4 in
@@ -216,7 +218,8 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
     (*Need to check this*)
     let rlu ~k ~x:_x ~u =
       let t = AD.Maths.(__dt * F (float_of_int k)) in
-      let c = cost_function t in
+      let c = let wp,wm = P.weighing_pm in 
+      AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)*F wp + sigmoid ((t - F P.t_prep) / F 2E-4)*F wm) in 
       let r = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
       let u = AD.Maths.(u*@(transpose __b)) in 
       AD.Maths.(u *@ r*@__b  * c * __dt)
@@ -249,7 +252,8 @@ let __c = AD.pack_arr P.c in
   let rl_uu =
     let rluu ~k ~x:_x ~u:_u =
       let t = AD.Maths.(__dt * F (float_of_int k)) in
-      let c = cost_function t in
+      let c = let wp,wm = P.weighing_pm in 
+      AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)*F wp + sigmoid ((t - F P.t_prep) / F 2E-4)*F wm) in 
       let ma = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
       AD.Maths.((transpose __b)*@ ma*@ ( __b) * c * __dt)
     in

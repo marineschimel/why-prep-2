@@ -20,6 +20,8 @@ module type Prms = sig
   val w : Mat.mat
   val c : Mat.mat
   val __c : AD.t
+
+  val weighing_pm : float*float
 end
 
 module type JPrms = sig

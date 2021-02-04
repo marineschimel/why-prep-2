@@ -26,6 +26,7 @@ module Make_4D (P : Prms) (D : C_Prms) = struct
 
   let n_steps = int_of_float (P.duration /. dt)
 
+
   (*let switch_function t = AD.Maths.(sigmoid ((t - F P.t_prep) / F 2E-3))*)
 
   let rl_u = 
@@ -182,7 +183,6 @@ module Make (P : Prms) (D : C_Prms) = struct
   let __dt = AD.F dt
 
   let __c = P.__c
-
   let n_steps = int_of_float (P.duration /. dt)
 
   (*let switch_function t = AD.Maths.(sigmoid ((t - F P.t_prep) / F 2E-3))*)

@@ -23,6 +23,7 @@ let evaluate
     ?gamma:_gamma
     ?cost:_cost
     ?x0:_x0
+    ?weighing_pm:_wpm
     ~t_mov
     ~c
     ~w
@@ -77,7 +78,10 @@ let evaluate
       | Some a -> a
       | None   -> [| Mat.of_arrays [| [| -0.287147; 2.39155; 0.; 0. |] |] |]
 
-
+    let weighing_pm =
+        match _wpm with
+        | Some (wp,wm) -> (wp,wm)
+        | None   -> (1.,1.)
     let w = w
     let n = size_net+4
     let m = size_inputs
@@ -212,7 +216,7 @@ let evaluate
             ~append:true
             ~out:(PT.saving_dir "accuracy")
             (Mat.of_array [| PT.r_coeff; PT.t_prep; A.accuracy_theta traj |] 1 (-1))));
-      pct_change < 1E-4
+      pct_change < 1E-3
   in
   let final_us = I.learn ~stop x0 us in
   let energy =
@@ -243,13 +247,13 @@ let _dir_rad =  "big_soc" in
  in let null_c = Linalg.D.null c in 
  let _ = Printf.printf "%i %i %!" (Mat.row_num null_c) (Mat.col_num null_c) in 
 let _x_init = Mat.(null_c *@ (gaussian ~sigma:0.2 198 1)) |> Mat.transpose |> AD.pack_arr in*) 
- Array.map (fun i ->
+ Array.map (fun (pc,mc) ->
   (* let w = Mat.load_txt (Printf.sprintf "results_c/%s/alpha_%i/w" net _alpha) in
   let c = Mat.load_txt (Printf.sprintf "results_c/%s/alpha_%i/c" net _alpha) in *)
   (* let w = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/w" net size_inputs) in
   let c = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/c" net size_inputs) in *)
-  let w = Mat.load_txt ((in_dir "w_final") ) in 
-  let c = Mat.load_txt ((in_dir "c_final") ) in 
+  let w = Mat.load_txt ("results/reach_1/w") in 
+  let c = Mat.load_txt ("results/reach_1/c") in 
   (* let c = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/c" net size_inputs) in *)
     let x0 =
     AD.Maths.(concatenate ~axis:1 [| initial_theta; AD.Mat.zeros 1 n |])
@@ -260,14 +264,15 @@ let _x_init = Mat.(null_c *@ (gaussian ~sigma:0.2 198 1)) |> Mat.transpose |> AD
         ~t_mov:0.4
         ~t_prep:t
         ~gamma:2.
-        ~target:[| Mat.row targets i|]
+        ~target:[| Mat.row targets 0|]
         ~c
         ~w
         ~r_coeff:1E-3
         ~qs_coeff:1.
         ~annealing:(false,0.)
-        (Printf.sprintf "final"))
+        ~weighing_pm:(pc,mc)
+        (Printf.sprintf "w_%i_%i" (int_of_float pc) (int_of_float mc)))
         (* (Printf.sprintf "%s/compound_%i%i" net i j)) *)
        
-    [|0.;0.05;0.1;0.2;0.5;0.6|] )
-    [|0|]
+    [|0.4|] )
+    [|(1000.,1.);(100.,1.);(10.,1.);(1.,10.);(1.,100.);(1.,1000.)|]
