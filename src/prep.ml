@@ -100,7 +100,7 @@ C.rl_u
       if t < F t_prep then AD.F 1. else AD.F 1.
     in
   let dx =
-      AD.Maths.(((__a *@ xst) + (Defaults.__b *@ transpose u * _input_switched)) * __dt)
+      AD.Maths.(((__a *@ xst) + (P.b *@ transpose u * _input_switched)) * __dt)
       |> AD.Maths.transpose
     in
 
@@ -159,7 +159,7 @@ in
         ~axis:0
         [| AD.Mat.zeros 2 m
          ; AD.Mat.zeros 2 m
-         ; AD.Maths.(Defaults.__b * _input_switched)
+         ; AD.Maths.(P.b * _input_switched)
         |]
     in
     AD.Maths.(transpose (m * __dt))
@@ -255,7 +255,7 @@ C.rl_u
       if t < F t_prep then AD.F 1. else AD.F 1.
     in
   let dx =
-      AD.Maths.(((__a xst) + (Defaults.__b *@ transpose u * _input_switched)) * __dt)
+      AD.Maths.(((__a xst) + (P.b *@ transpose u * _input_switched)) * __dt)
       |> AD.Maths.transpose
     in
     let tau = AD.Maths.(__c *@ g xst) |> AD.Maths.transpose in
@@ -312,7 +312,7 @@ in
         ~axis:0
         [| AD.Mat.zeros 2 m
          ; AD.Mat.zeros 2 m
-         ; AD.Maths.(Defaults.__b * _input_switched)
+         ; AD.Maths.(P.b * _input_switched)
         |]
     in
     AD.Maths.(transpose (m * __dt))

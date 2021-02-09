@@ -60,8 +60,8 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
       let t = AD.Maths.(__dt * F (float_of_int k)) in
       let c = cost_function t in
       let r = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
-      let u = AD.Maths.(u*@(transpose __b)) in 
-      AD.Maths.(u *@ r*@__b  * c * __dt)
+      let u = AD.Maths.(u*@(transpose P.b)) in 
+      AD.Maths.(u *@ r*@P.b  * c * __dt)
     in
     Some rlu
 
@@ -93,7 +93,7 @@ let __c = AD.pack_arr P.c in
       let t = AD.Maths.(__dt * F (float_of_int k)) in
       let c = cost_function t in
       let ma = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
-      AD.Maths.((transpose __b)*@ ma*@ ( __b) * c * __dt)
+      AD.Maths.((transpose P.b)*@ ma*@ ( P.b) * c * __dt)
     in
     Some rluu
 
@@ -201,7 +201,7 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
     let t = AD.Maths.(__dt * F (float_of_int k)) in
     let torques = AD.Maths.(P.__c *@ transpose x_state) in
     let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in 
-    let u = AD.Maths.(u*@(transpose __b)) in 
+    let u = AD.Maths.(u*@(transpose P.b)) in
     AD.Maths.(
       ((sum' (u *@ r * u) * cost_function t)
       + (sum' (dx_p *@ q * dx_p) * sigmoid ((t - tau) / F 20E-3))
@@ -221,9 +221,10 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
       let c = let wp,wm = P.weighing_pm in 
       AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)*F wp + sigmoid ((t - F P.t_prep) / F 2E-4)*F wm) in 
       let r = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
-      let u = AD.Maths.(u*@(transpose __b)) in 
-      AD.Maths.(u *@ r*@__b  * c * __dt)
+            let u = AD.Maths.(u*@(transpose P.b)) in 
+      AD.Maths.(u *@ r*@P.b * c * __dt)
     in
+
     Some rlu
 
     let rl_x = let rlx ~k ~x ~u:_u =
@@ -255,7 +256,8 @@ let __c = AD.pack_arr P.c in
       let c = let wp,wm = P.weighing_pm in 
       AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)*F wp + sigmoid ((t - F P.t_prep) / F 2E-4)*F wm) in 
       let ma = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
-      AD.Maths.((transpose __b)*@ ma*@ ( __b) * c * __dt)
+      (AD.Maths.(P.b*@ ma*@ P.b * c * __dt))
+
     in
     Some rluu
 

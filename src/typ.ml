@@ -19,6 +19,8 @@ module type Prms = sig
   val duration : float
   val w : Mat.mat
   val c : Mat.mat
+
+  val b : AD.t
   val __c : AD.t
 
   val weighing_pm : float*float

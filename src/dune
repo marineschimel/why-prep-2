@@ -1,5 +1,5 @@
 (executables
- (names typ prep run costs end_to_end param_search)
+ (names typ prep run costs end_to_end param_search run_similarity)
  (libraries owl owl-ode owl-ode-sundials cmdargs owl-opt owl-opt-lbfgs arm
    ilqr lib core)
  (preprocess

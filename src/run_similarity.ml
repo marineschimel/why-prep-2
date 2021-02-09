@@ -1,3 +1,4 @@
+(*Similarity transforms don't change the transfer function of the system : therefore, every SOC should be able to be transformed into a system wuth a normal A that prepares just as much?? In this file I'll compute all the matrices obtained from the similarity transform and see how the internal dynamics compare... we expecct that the optimal inputs and the output should be the same as for the original system (I think?) or at least that for the initial set of inputs we'll recover the right output*)
 open Owl
 module AD = Algodiff.D
 module M = Arm.Make (Arm.Defaults)
@@ -5,7 +6,13 @@ open Lib
 module T = Core.Time
 open Defaults
 open Printf
+open Misc
 module A = Analysis_funs
+
+
+let transform w b c = 
+  let w_tilde, t = transform w in let b_tilde = Mat.((inv t)*@b) in let c_tilde = Mat.(c*@t)
+in w_tilde, b_tilde, c_tilde
 
 let _ = Printexc.record_backtrace true
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
@@ -83,6 +90,7 @@ let evaluate
         match _wpm with
         | Some (wp,wm) -> (wp,wm)
         | None   -> (1.,1.)
+    let b = AD.pack_arr b
     let w = w
     let n = size_net+4
     let m = size_inputs
@@ -92,7 +100,6 @@ let evaluate
     let saving_dir = Printf.sprintf "%s/%s/%s" dir subdir
     let c = c 
     let __c = AD.pack_arr c
-    let b = b
   end
   in
   let module P = Prep.Make (PT) (Costs.C_Running (PT)) in
@@ -160,6 +167,11 @@ let evaluate
              ~out:
                (PT.saving_dir
                   (sprintf "results_us_%i" (int_of_float (PT.t_prep *. 1000.))));
+        Mat.(inputs*@(transpose (AD.unpack_arr PT.b)))
+                  |> Mat.save_txt
+                       ~out:
+                         (PT.saving_dir
+                            (sprintf "transformed_us_%i" (int_of_float (PT.t_prep *. 1000.))));
         (* Mat.(inputs *@ transpose v)
         |> Mat.save_txt
              ~out:
@@ -249,13 +261,18 @@ let _dir_rad =  "big_soc" in
  in let null_c = Linalg.D.null c in 
  let _ = Printf.printf "%i %i %!" (Mat.row_num null_c) (Mat.col_num null_c) in 
 let _x_init = Mat.(null_c *@ (gaussian ~sigma:0.2 198 1)) |> Mat.transpose |> AD.pack_arr in*) 
- Array.map (fun (pc,mc) ->
+ Array.map (fun _ ->
   (* let w = Mat.load_txt (Printf.sprintf "results_c/%s/alpha_%i/w" net _alpha) in
   let c = Mat.load_txt (Printf.sprintf "results_c/%s/alpha_%i/c" net _alpha) in *)
   (* let w = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/w" net size_inputs) in
   let c = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/c" net size_inputs) in *)
-  let w = Mat.load_txt ("results/results_c/random/size_200/w") in 
+  let _w = Mat.load_txt ("results/reach_1/w") in 
+  let w = make_random 0.8 in 
   let c = Mat.load_txt ("results/reach_1/c") in 
+  let b = ( Defaults.__b) in 
+   (*let w,_b,_c = transform w (AD.unpack_arr b) c in *)
+   let b = AD.unpack_arr ( Defaults.__b) in 
+  let _ = Mat.save_txt ~out:(in_dir "similarity/w") w;  Mat.save_txt ~out:(in_dir "similarity/c") c; Mat.save_txt ~out:(in_dir "similarity/b") b in 
   (* let c = Mat.load_txt (Printf.sprintf "results_bc_r2/%s/size_%i/c" net size_inputs) in *)
     let x0 =
     AD.Maths.(concatenate ~axis:1 [| initial_theta; AD.Mat.zeros 1 n |])
@@ -269,15 +286,13 @@ let _x_init = Mat.(null_c *@ (gaussian ~sigma:0.2 198 1)) |> Mat.transpose |> AD
         ~target:[| Mat.row targets 0|]
         ~c
         ~w
-        ~b:Defaults.__b
+        ~b
         ~r_coeff:0.1
         ~qs_coeff:1.
         ~annealing:(false,0.)
-        ~weighing_pm:(pc,mc)
-        (Printf.sprintf "results_c/random" ))
+        ~weighing_pm:(1.,1.)
+        (Printf.sprintf "similarity/random_net"))
         (* (Printf.sprintf "%s/compound_%i%i" net i j)) *)
        
-    [|0.6;0.|] )
-    [|(1.,1.)|]
-    (* ;(1000.,1.);(100.,1.);(10.,1.);(1.,10.);(1.,100.);(1.,1000.);
-(500.,1.);(1.,500.);(5.,1.);(1.,5.)|] *)
+    [|0.4|] )
+    [|0|]

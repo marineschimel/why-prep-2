@@ -1,7 +1,7 @@
 (executables
  (names analyze_prep analysis lara entanglement jpca toy_data modes
    eigenvalues gather fixed_points obs_analysis comp_tprep proj_all
-   analyze_bc)
+   test_nonnorm analyze_bc pca)
  (libraries owl owl-ode owl-ode-sundials cmdargs owl-opt owl-opt-lbfgs arm
    ilqr lib core)
  (preprocess
