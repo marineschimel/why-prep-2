@@ -13,12 +13,12 @@ let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 
 let in_dir s = Printf.sprintf "%s/%s" dir s
 
-(* let num_init = Cmdargs.(get_int "-init" |> force ~usage:"-init [init number]") *)
-let net = Cmdargs.(get_string "-net" |> force ~usage:"-net [dir to save in]")
+let rinv =
+  Cmdargs.(get_int "-rinv" |> force ~usage:"-rinv [inverse of r_coeff]")
 
 let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
     ?t_prep:_t_prep ?gamma:_gamma ?cost:_cost ?x0:_x0 ?weighing_pm:_wpm ~t_mov
-    ~c ~w ~b ~annealing subdir =
+    ~noise ~c ~w ~b subdir =
   let module PT = struct
     let qs_coeff = match _t_coeff with Some a -> a | None -> 1000.
 
@@ -83,27 +83,15 @@ let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
       traj
   in
   let x0 = PT.x0 in
+  let us0 =
+    Mat.load_txt
+      (Printf.sprintf "results/noise/soc_r_%i/results_us_%i" rinv
+         (int_of_float (PT.t_prep *. 1000.)))
+  in
   let us =
-    match annealing with
-    | false, _ -> List.init P.n_steps (fun _ -> AD.Mat.zeros 1 size_inputs)
-    | true, t_pred ->
-        let _ = Printf.printf "%f %f %!" t_pred PT.t_prep in
-        let n_pred_prep = int_of_float (t_pred /. sampling_dt) in
-        let _n_prep = int_of_float (PT.t_prep /. sampling_dt) in
-        let _ = Printf.printf "%i = i %!" n_pred_prep in
-        let inpts =
-          Mat.load_txt
-            (PT.saving_dir (Printf.sprintf "results_us_%i" n_pred_prep))
-          |> AD.pack_arr
-        in
-        let _ =
-          Printf.printf "n_steps_pred : %i %i new : %i %!"
-            (AD.Mat.row_num inpts) (AD.Mat.col_num inpts) P.n_steps
-        in
-        let delta_n = _n_prep - n_pred_prep + 1 in
-        List.init P.n_steps (fun i ->
-            if i <= delta_n then AD.Mat.zeros 1 size_inputs
-            else AD.Maths.get_slice [ [ i - delta_n - 1 ]; [] ] inpts)
+    List.init P.n_steps (fun i ->
+        let u = Mat.get_slice [ [ i ]; [] ] us0 in
+        AD.pack_arr Mat.(u + (noise $* u * gaussian 1 PT.m)))
   in
   I.trajectory x0 us |> AD.unpack_arr
   |> Mat.save_txt ~out:(PT.saving_dir "traj0");
@@ -118,10 +106,6 @@ let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
       let traj = traj_ad |> AD.unpack_arr in
       let inputs =
         us |> Array.of_list |> AD.Maths.concatenate ~axis:0 |> AD.unpack_arr
-      in
-      let _ =
-        Printf.printf "%i %i %i %i %!" (AD.Mat.row_num __w) (AD.Mat.col_num __w)
-          (AD.Mat.row_num traj_ad) (AD.Mat.col_num traj_ad)
       in
       let recurrent =
         AD.Maths.(
@@ -165,29 +149,15 @@ let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
              ~out:
                (PT.saving_dir
                   (sprintf "results_us_%i" (int_of_float (PT.t_prep *. 1000.))));
-        (* Mat.(inputs *@ transpose v)
-           |> Mat.save_txt
-                ~out:
-                  (PT.saving_dir
-                     (sprintf "results_us_scaled_%i" (int_of_float (PT.t_prep *. 1000.)))); *)
-        (* Mat.save_txt
-           ~out:
-             (PT.saving_dir (sprintf "traj_scaled_%i" (int_of_float (PT.t_prep *. 1000.))))
-           Mat.(get_slice [ []; [ 4; -1 ] ] traj *@ transpose v); *)
         let t = T.now () in
         let dt = T.diff t t0 in
         Printf.printf "Time iter %i | %s | %!" k (T.Span.to_string dt) );
-      (* Mat.(inputs + recurrent)
-         |> Mat.save_txt
-              ~out:
-                (PT.saving_dir
-                   (sprintf "effective_us_%i" (int_of_float (PT.t_prep *. 1000.)))); *)
       recurrent
       |> Mat.save_txt
            ~out:
              (PT.saving_dir
                 (sprintf "recurrent_us_%i" (int_of_float (PT.t_prep *. 1000.))));
-      if pct_change < 1E-3 then (
+      if pct_change > 0. then (
         Mat.(
           save_txt ~append:true
             ~out:(PT.saving_dir "loss_time")
@@ -216,7 +186,7 @@ let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
             (Mat.of_array
                [| PT.r_coeff; PT.t_prep; A.accuracy_theta traj |]
                1 (-1))) );
-      pct_change < 1E-3
+      pct_change > 0.
   in
   let final_us = I.learn ~stop x0 us in
   let energy =
@@ -232,24 +202,19 @@ let targets = Mat.load_txt "data/target_thetas"
 
 let run_run =
   Array.map
-    (fun _ ->
-      let w =
-        Mat.load_txt
-          (in_dir (Printf.sprintf "from_rdn_sizes/size_%i/w_final" size_net))
-      in
-      let c =
-        Mat.load_txt
-          (in_dir (Printf.sprintf "from_rdn_sizes/size_%i/c_final" size_net))
-      in
+    (fun (pc, mc) ->
+      let w = Mat.load_txt "results/reach_1/w" in
+      let c = Mat.load_txt "results/reach_1/c" in
       let x0 =
         AD.Maths.(concatenate ~axis:1 [| initial_theta; AD.Mat.zeros 1 n |])
       in
       Array.mapi
-        (fun _ i ->
-          evaluate ~x0 ~t_mov:0.4 ~t_prep:0. ~gamma:2.
-            ~target:[| Mat.row targets i |]
-            ~c ~w ~b:Defaults.__b ~r_coeff:0.01 ~qs_coeff:1.
-            ~annealing:(false, 0.) ~weighing_pm:(1., 1.)
-            (Printf.sprintf "from_rdn_sizes/size_%i/final" size_net))
-        [| 0 |])
-    [| 4 |]
+        (fun _ noise ->
+          evaluate ~x0 ~t_mov:0.4 ~t_prep:0.3 ~gamma:2.
+            ~target:[| Mat.row targets 0 |]
+            ~noise ~c ~w ~b:Defaults.__b
+            ~r_coeff:(1. /. float rinv)
+            ~qs_coeff:1. ~weighing_pm:(pc, mc)
+            (Printf.sprintf "noise/soc_r_%i/level_%.3f" rinv noise))
+        [| 0.; 0.001; 0.01; 0.1; 1.; 2.; 10. |])
+    [| (1., 1.) |]

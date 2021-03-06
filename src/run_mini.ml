@@ -13,7 +13,6 @@ let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 
 let in_dir s = Printf.sprintf "%s/%s" dir s
 
-(* let num_init = Cmdargs.(get_int "-init" |> force ~usage:"-init [init number]") *)
 let net = Cmdargs.(get_string "-net" |> force ~usage:"-net [dir to save in]")
 
 let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
@@ -24,10 +23,7 @@ let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
 
     let cost = match _cost with Some a -> a | None -> "running"
 
-    let r_coeff =
-      match _r_coeff with
-      | Some a -> Defaults.r_coeff *. a
-      | None -> Defaults.r_coeff
+    let r_coeff = match _r_coeff with Some a -> a | None -> Defaults.r_coeff
 
     let t_prep = match _t_prep with Some a -> a | None -> 0.
 
@@ -37,13 +33,7 @@ let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
       match _x0 with
       | Some x0 -> x0
       | None ->
-          AD.Maths.(
-            concatenate ~axis:1
-              [|
-                initial_theta;
-                AD.Mat.zeros 1 n
-                (*; Mat.of_array [| -0.5 |] 1 (-1) |> AD.pack_arr*);
-              |])
+          AD.Maths.(concatenate ~axis:1 [| initial_theta; AD.Mat.zeros 1 n |])
 
     let target_theta =
       match _target with
@@ -165,23 +155,9 @@ let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
              ~out:
                (PT.saving_dir
                   (sprintf "results_us_%i" (int_of_float (PT.t_prep *. 1000.))));
-        (* Mat.(inputs *@ transpose v)
-           |> Mat.save_txt
-                ~out:
-                  (PT.saving_dir
-                     (sprintf "results_us_scaled_%i" (int_of_float (PT.t_prep *. 1000.)))); *)
-        (* Mat.save_txt
-           ~out:
-             (PT.saving_dir (sprintf "traj_scaled_%i" (int_of_float (PT.t_prep *. 1000.))))
-           Mat.(get_slice [ []; [ 4; -1 ] ] traj *@ transpose v); *)
         let t = T.now () in
         let dt = T.diff t t0 in
         Printf.printf "Time iter %i | %s | %!" k (T.Span.to_string dt) );
-      (* Mat.(inputs + recurrent)
-         |> Mat.save_txt
-              ~out:
-                (PT.saving_dir
-                   (sprintf "effective_us_%i" (int_of_float (PT.t_prep *. 1000.)))); *)
       recurrent
       |> Mat.save_txt
            ~out:
@@ -232,24 +208,22 @@ let targets = Mat.load_txt "data/target_thetas"
 
 let run_run =
   Array.map
-    (fun _ ->
+    (fun net ->
       let w =
-        Mat.load_txt
-          (in_dir (Printf.sprintf "from_rdn_sizes/size_%i/w_final" size_net))
+        Mat.load_txt (Printf.sprintf "results/mini/prep/net_%i/w_final" net)
       in
       let c =
-        Mat.load_txt
-          (in_dir (Printf.sprintf "from_rdn_sizes/size_%i/c_final" size_net))
+        Mat.load_txt (Printf.sprintf "results/mini/prep/net_%i/c_final" net)
       in
       let x0 =
         AD.Maths.(concatenate ~axis:1 [| initial_theta; AD.Mat.zeros 1 n |])
       in
       Array.mapi
         (fun _ i ->
-          evaluate ~x0 ~t_mov:0.4 ~t_prep:0. ~gamma:2.
+          evaluate ~x0 ~t_mov:0.4 ~t_prep:0.4 ~gamma:2.
             ~target:[| Mat.row targets i |]
-            ~c ~w ~b:Defaults.__b ~r_coeff:0.01 ~qs_coeff:1.
+            ~c ~w ~b:Defaults.__b ~r_coeff:1E-6 ~qs_coeff:0.1
             ~annealing:(false, 0.) ~weighing_pm:(1., 1.)
-            (Printf.sprintf "from_rdn_sizes/size_%i/final" size_net))
-        [| 0 |])
-    [| 4 |]
+            (Printf.sprintf "mini/prep/net_%i" net))
+        [| 0; 1; 2; 3; 4; 5; 6 |])
+    [| 2; 3; 4; 5; 6; 7; 8; 9 |]
