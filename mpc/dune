@@ -1,0 +1,6 @@
+(executables
+ (names ilqr_mpc)
+ (libraries owl owl-ode owl-ode-sundials cmdargs owl-opt owl-opt-lbfgs arm
+   ilqr core)
+ (preprocess
+  (pps ppx-owl-opt)))
