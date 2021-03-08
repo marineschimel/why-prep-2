@@ -77,7 +77,7 @@ let run ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff ?t_prep:_t_prep
         AD.unpack_arr (AD.Maths.get_slice [ []; [ 4; -1 ] ] plan_x)
       in
       let _ =
-        if step = 0 then (
+        if step = 1 then (
           Mat.save_txt ~out:(PT.saving_dir "planned") (AD.unpack_arr plan_x);
 
           Mat.save_txt
@@ -204,8 +204,12 @@ let run ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff ?t_prep:_t_prep
   plan_traj 0 [] [] x0 us0
 
 let _ =
-  run ~t_mov:0.3 ~t_prep:0.5 ~gamma:2.
+  run ~t_mov:0.4 ~t_prep:0. ~gamma:2.
     ~target:[| Mat.row targets 0 |]
-    ~c:(Mat.load_txt "data/size_50/c_soc_50")
-    ~w:(Mat.load_txt "data/size_50/w_rec_50")
-    ~b:Defaults.__b ~r_coeff:0.001 ~qs_coeff:1. (Printf.sprintf "mpc")
+    ~c:(Mat.gaussian 2 size_net)
+    ~w:
+      (let x = Mat.gaussian ~sigma:0.5 size_net size_net in
+       Mat.(x - transpose x))
+      (* ~c:(Mat.load_txt "data/size_50/c_soc_50")
+         ~w:(Mat.load_txt "data/size_50/w_rec_50") *)
+    ~b:Defaults.__b ~r_coeff:0.1 ~qs_coeff:1. (Printf.sprintf "mpc")
