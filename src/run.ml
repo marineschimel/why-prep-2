@@ -228,28 +228,20 @@ let evaluate ?target:_target ?qs_coeff:_t_coeff ?r_coeff:_r_coeff
   in
   energy
 
-let targets = Mat.load_txt "data/target_thetas"
-
 let run_run =
   Array.map
     (fun _ ->
-      let w =
-        Mat.load_txt
-          (in_dir (Printf.sprintf "from_rdn_sizes/size_%i/w_final" size_net))
-      in
-      let c =
-        Mat.load_txt
-          (in_dir (Printf.sprintf "from_rdn_sizes/size_%i/c_final" size_net))
-      in
+      let w = Mat.load_txt (Printf.sprintf "data/size_50/w_rec_50") in
+      let c = Mat.load_txt (Printf.sprintf "data/size_50/c_soc_50") in
       let x0 =
         AD.Maths.(concatenate ~axis:1 [| initial_theta; AD.Mat.zeros 1 n |])
       in
       Array.mapi
         (fun _ i ->
-          evaluate ~x0 ~t_mov:0.4 ~t_prep:0. ~gamma:2.
+          evaluate ~x0 ~t_mov:0.4 ~t_prep:0.4 ~gamma:2.
             ~target:[| Mat.row targets i |]
             ~c ~w ~b:Defaults.__b ~r_coeff:0.01 ~qs_coeff:1.
             ~annealing:(false, 0.) ~weighing_pm:(1., 1.)
-            (Printf.sprintf "from_rdn_sizes/size_%i/final" size_net))
-        [| 0 |])
+            (Printf.sprintf "reaches/reach_%i" (succ i)))
+        [| 1; 2 |])
     [| 4 |]

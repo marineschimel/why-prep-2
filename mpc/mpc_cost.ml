@@ -50,7 +50,7 @@ module C_Early (P : Prms) = struct
     let _dx_start = AD.Maths.(in_pos - thetas) in
     let t = AD.Maths.(__dt * F (float_of_int k)) in
     let torques = AD.Maths.(P.__c *@ transpose x_state) in
-    let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in
+    let start = AD.Maths.(sigmoid ((F t_left - t) / F 2E-4)) in
     let u = AD.Maths.(u *@ transpose P.b) in
     AD.Maths.(
       ( sum' (u *@ r * u)
@@ -89,7 +89,7 @@ module C_Early (P : Prms) = struct
       let r_xstate =
         AD.Maths.(
           x_state *@ transpose __c *@ t_mat *@ __c * F 2.
-          * sigmoid ((F P.t_prep - t) / F 2E-3))
+          * sigmoid ((F t_left - t) / F 2E-3))
       in
       let r_xp1 =
         AD.Maths.(AD.F 2. * neg dx_p *@ q * sigmoid ((t - tau) / F 20E-3))
@@ -191,8 +191,6 @@ module C_Post (P : Prms) = struct
 
   let a_mat = Mat.(eye size_net *$ (Defaults.a_coeff *. 0.5)) |> AD.pack_arr
 
-  let tau = AD.F (P.t_prep +. P.t_mov)
-
   let __dt = AD.F sampling_dt
 
   let target = P.target_theta.(0) |> AD.pack_arr
@@ -207,14 +205,17 @@ module C_Post (P : Prms) = struct
 
   let step = P.step
 
+  let ds = end_mov - step
+
+  let tau = AD.Maths.(F (float ds) * __dt)
+
   let cost ~u ~x ~k =
     let thetas = unpack_pos x in
     let vel = unpack_vel x in
     let dx_p = AD.Maths.(tgt_pos - thetas) in
     let dx_vel = vel in
     let t = AD.Maths.(__dt * F (float_of_int k)) in
-    let ds = end_mov - step in
-    let tau = AD.Maths.(F (float ds) * __dt) in
+
     AD.Maths.(
       ( sum' (u *@ r * u)
       + (sum' (dx_p *@ q * dx_p) * sigmoid ((t - tau) / F 20E-3))

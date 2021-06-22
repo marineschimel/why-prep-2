@@ -1,6 +1,6 @@
 (executables
  (names run_mini typ prep run costs end_to_end param_search run_similarity
-   noise_robustness)
+   noise_robustness movements)
  (libraries owl owl-ode owl-ode-sundials cmdargs owl-opt owl-opt-lbfgs arm
    ilqr lib core)
  (preprocess
