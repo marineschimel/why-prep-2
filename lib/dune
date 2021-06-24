@@ -1,5 +1,15 @@
 (library
  (name lib)
- (libraries owl cmdargs lbfgs owl-ode owl-ode-sundials owl-opt-lbfgs arm)
+ (libraries
+  owl
+  cmdargs
+  lbfgs
+  owl-ode
+  owl-ode-sundials
+  owl-opt-lbfgs
+  arm
+  owl-parameters
+  base
+  dilqr)
  (preprocess
   (pps ppx-owl-opt)))
