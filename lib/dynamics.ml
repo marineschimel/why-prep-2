@@ -74,9 +74,11 @@ module Arm_Linear = struct
 
 
   let dyn ~theta ~task =
-    let a = Owl_parameters.extract theta.a in
     let b = Owl_parameters.extract theta.b in
     let c = Owl_parameters.extract theta.c in
+    let tau = task.tau in
+    let a = Owl_parameters.extract theta.a in
+    let a = AD.Maths.(a / AD.F tau) in
     let t_prep = task.t_prep in
     let dt = task.dt in
     let _dt = AD.F dt in
@@ -108,7 +110,9 @@ module Arm_Linear = struct
   let dyn_x =
     (* Marine to check this *)
     let _dyn_x ~theta ~task =
+      let tau = task.tau in
       let a = Owl_parameters.extract theta.a in
+      let a = AD.Maths.(a / AD.F tau) in
       let at = AD.Maths.transpose a in
       let ms = ms ~prms:theta in
       let m = AD.Mat.row_num a in

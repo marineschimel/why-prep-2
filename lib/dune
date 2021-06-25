@@ -10,6 +10,7 @@
   arm
   owl-parameters
   base
+  comm
   dilqr)
  (preprocess
   (pps ppx-owl-opt)))

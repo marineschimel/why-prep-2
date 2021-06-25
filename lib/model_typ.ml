@@ -10,6 +10,7 @@ type task =
   ; t_mov : float
   ; t_hold : float option
   ; dt : float
+  ; tau : float
   }
 
 module Generative_P = struct
