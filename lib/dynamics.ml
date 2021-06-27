@@ -106,7 +106,7 @@ module Arm_Linear = struct
       and new_x = AD.Maths.(xs + dx) in
       AD.Maths.(concatenate ~axis:1 [| new_thetas; new_x |])
 
-
+  
   let dyn_x =
     (* Marine to check this *)
     let _dyn_x ~theta ~task =

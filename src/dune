@@ -1,16 +1,5 @@
 (executables
- (names
-  run_mini
-  typ
-  prep
-  run
-  run_test
-  costs
-  end_to_end
-  param_search
-  run_similarity
-  noise_robustness
-  movements)
+ (names run_soc costs)
  (libraries
   owl
   owl-ode
