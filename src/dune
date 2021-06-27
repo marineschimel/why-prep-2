@@ -11,16 +11,6 @@
   run_similarity
   noise_robustness
   movements)
- (libraries
-  owl
-  owl-ode
-  owl-ode-sundials
-  cmdargs
-  owl-opt
-  owl-opt-lbfgs
-  arm
-  ilqr
-  lib
-  core)
+ (libraries owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))
