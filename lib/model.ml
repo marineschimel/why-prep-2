@@ -87,14 +87,16 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
     in
     let module IP = Dilqr.Default.Make (M) in
     let stop_ilqr loss ~prms =
-      let x0, theta = AD.Mat.zeros 1 n, prms in
+      let x0, theta =
+        AD.Maths.concatenate ~axis:1 [| task.theta0; AD.Mat.zeros 1 m |], prms
+      in
       let cprev = ref 1E9 in
       fun _k us ->
         let c = loss ~theta x0 us in
         let pct_change = Float.(abs (c -. !cprev) /. !cprev) in
         cprev := c;
         Stdio.printf "\n loss %f || Iter %i \n%!" c _k;
-        Float.(pct_change < 1E-4)
+        Float.(pct_change < 1E-3)
     in
     let us =
       match u_init with
@@ -111,7 +113,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         ~linesearch
         ~stop:(stop_ilqr IP.loss ~prms)
         ~us
-        ~x0:(AD.Mat.zeros 1 n)
+        ~x0:(AD.Maths.concatenate ~axis:1 [| task.theta0; AD.Mat.zeros 1 m |])
         ~theta:prms
         ()
     in

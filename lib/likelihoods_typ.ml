@@ -19,10 +19,12 @@ module End_P = struct
     ; c_mask : AD.t option
     ; qs_coeff : 'a
     ; t_coeff : 'a
+    ; g_coeff : 'a
     }
 
   let map ~f x =
-    { c = f x.c; c_mask = x.c_mask; qs_coeff = f x.qs_coeff; t_coeff = f x.t_coeff }
+    { c = f x.c; c_mask = x.c_mask; qs_coeff = f x.qs_coeff; t_coeff = f x.t_coeff ;
+    g_coeff = f x.g_coeff }
 
 
   let fold ?prefix ~init ~f x =

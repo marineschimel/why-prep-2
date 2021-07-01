@@ -1,16 +1,5 @@
 (executables
- (names
-  run_mini
-  typ
-  prep
-  run
-  run_test
-  costs
-  end_to_end
-  param_search
-  run_similarity
-  noise_robustness
-  movements)
+ (names run_soc run_sparse_soc run_soc_noises costs)
  (libraries owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))

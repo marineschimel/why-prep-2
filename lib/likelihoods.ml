@@ -25,10 +25,13 @@ struct
     let target_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.target in
     let theta0 = task.theta0 in
     let qs_coeff = Owl_parameters.extract prms.qs_coeff in
+    let g_coeff = Owl_parameters.extract prms.g_coeff in
+      
     let t_coeff = Owl_parameters.extract prms.t_coeff in
     let dt = task.dt in
     let n_prep = Float.to_int (t_prep /. dt) in
-    let n_mov = Float.to_int (task.t_mov /. dt) in
+    let n_mov = let d_mov = Float.to_int (task.t_mov /. dt) in
+    n_prep + d_mov in 
     let c = unpack_c ~prms in
     let c_t = AD.Maths.transpose c in
     fun ~k ~z_t ->
@@ -44,7 +47,7 @@ struct
       else if k > n_mov
       then
         AD.Maths.(
-          F 0.5 * (l2norm_sqr' (theta_pos - target_pos) + (F 0.1 * l2norm_sqr' theta_vel)))
+          F 0.5 * g_coeff * (l2norm_sqr' (theta_pos - target_pos) + (F 0.1 * l2norm_sqr' theta_vel)))
       else AD.F 0.
 
 
@@ -54,10 +57,12 @@ struct
       let target_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.target in
       let theta0 = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.theta0 in
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
+      let g_coeff = Owl_parameters.extract prms.g_coeff in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
       let dt = task.dt in
       let n_prep = Float.to_int (t_prep /. dt) in
-      let n_mov = Float.to_int (task.t_mov /. dt) in
+      let n_mov = let d_mov = Float.to_int (task.t_mov /. dt) in
+      n_prep + d_mov in 
       let c = unpack_c ~prms in
       let c = AD.Maths.get_slice [ []; [ 4; -1 ] ] c in
       let m = AD.Mat.col_num c in
@@ -74,14 +79,14 @@ struct
           if k < n_prep
           then AD.Maths.(qs_coeff * (theta_pos - theta0))
           else if k > n_mov
-          then AD.Maths.(qs_coeff * (theta_pos - target_pos))
+          then AD.Maths.(g_coeff * (theta_pos - target_pos))
           else AD.Mat.zeros 1 2
         in
         let r_xv =
           if k < n_prep
           then AD.Maths.(qs_coeff * theta_vel)
           else if k > n_mov
-          then AD.Maths.(F 0.1 * qs_coeff * theta_vel)
+          then AD.Maths.(F 0.1 * g_coeff * theta_vel)
           else AD.Mat.zeros 1 2
         in
         AD.Maths.(concatenate ~axis:1 [| r_xp; r_xv; r_state |])
@@ -99,22 +104,24 @@ struct
       let dt = task.dt in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
+      let g_coeff = Owl_parameters.extract prms.g_coeff in
       let n_prep = Float.to_int (t_prep /. dt) in
-      let n_mov = Float.to_int (task.t_mov /. dt) in
+      let n_mov = let d_mov = Float.to_int (task.t_mov /. dt) in
+      n_prep + d_mov in 
       let c_term = AD.Maths.(t_coeff * transpose c *@ c) in
       fun ~k ~z_t:_ ->
         let mu =
           if k < n_prep
           then AD.Maths.(qs_coeff * AD.Mat.eye 2)
           else if k > n_mov
-          then AD.Mat.eye 2
+          then AD.Maths.(g_coeff * AD.Mat.eye 2)
           else AD.Mat.zeros 2 2
         in
         let mv =
           if k < n_prep
           then AD.Maths.(qs_coeff * AD.Mat.eye 2)
           else if k > n_mov
-          then AD.Maths.(AD.F 0.1 * AD.Mat.eye 2)
+          then AD.Maths.(AD.F 0.1 * g_coeff * AD.Mat.eye 2)
           else AD.Mat.zeros 2 2
         in
         let mx = if k < n_prep then c_term else AD.Mat.zeros m m in
