@@ -74,7 +74,7 @@ struct
           if k < n_prep
           then AD.Maths.(qs_coeff * (theta_pos - theta0))
           else if k > n_mov
-          then AD.Maths.(qs_coeff * (theta_pos - target_pos))
+          then AD.Maths.((theta_pos - target_pos))
           else AD.Mat.zeros 1 2
         in
         let r_xv =
