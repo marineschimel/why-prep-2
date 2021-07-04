@@ -1,5 +1,5 @@
 (executables
- (names analyze_inputs analysis_funs)
+ (names analyze_inputs tests analysis_funs)
  (libraries
   owl
   owl-ode

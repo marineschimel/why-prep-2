@@ -6,23 +6,36 @@ module M = Arm.Make (Arm.Defaults)
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir]")
 let n = 7
 let in_dir = Printf.sprintf "%s/%s" dir
+let t_preps = [| 0.; 0.01; 0.02; 0.05; 0.2; 0.3; 0.5; 0.6; 0.8; 1. |]
 
 let us i t_prep =
   Mat.load_txt (in_dir (Printf.sprintf "us_%i_%i" i Float.(to_int (1000. *. t_prep))))
 
 
-let us_mov us t_prep = Mat.get_slice [ [ Float.(to_int (1000. *. t_prep)); -1 ]; [] ] us
+let xs i t_prep =
+  Mat.load_txt (in_dir (Printf.sprintf "xs_%i_%i" i Float.(to_int (1000. *. t_prep))))
 
-let us_prep us t_prep =
-  Mat.get_slice [ [ 0; Float.(to_int (1000. *. t_prep)) - 1 ]; [] ] us
 
+let us_mov us t_prep =
+  Mat.get_slice [ [ Float.(to_int (1000. *. t_prep)) + 1; -1 ]; [] ] us
+
+
+let us_prep us t_prep = Mat.get_slice [ [ 0; Float.(to_int (1000. *. t_prep)) ]; [] ] us
 
 let get_entropy us =
+  let us = Mat.(us /$ Float.of_int (Mat.row_num us)) in
   let _, sis, _ = Linalg.D.svd us in
-  let pi = Mat.(sqr sis /$ sum' (sqr sis)) in
-  let e = Mat.(pi *@ log (transpose pi)) in
-  assert (Mat.row_num e = 1);
+  let pi = Mat.(sis /$ sum' sis) in
+  let e = Mat.(pi *@ neg (log (transpose pi))) in
+  assert (Mat.col_num e = 1 && Mat.row_num e = 1);
   Mat.sum' e
+
+
+let get_norm us = Mat.l2norm_sqr' us
+
+let get_rank us =
+  let _, sis, _ = Linalg.D.svd us in
+  Mat.(sum' sis)
 
 
 let energy us = Mat.l2norm_sqr' us
@@ -43,25 +56,57 @@ let get_mov_onset ~threshold ~thetas =
   Mat.min' flt_idces
 
 
-let gather_energies =
+let gather_energies n =
   Array.map
     ~f:(fun t ->
       let us = us n t in
       [| t; energy (us_prep us t) /. energy (us_mov us t) |])
-    [| 0.; 0.01; 0.02; 0.05; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6 |]
+    t_preps
 
 
-let gather_entropies =
+let gather_ranks n =
   Array.map
     ~f:(fun t ->
       let us = us n t in
+      let rp, rm, rt = get_rank (us_prep us t), get_rank (us_mov us t), get_rank us in
+      [| t; rp; rm; rt |])
+    t_preps
+
+
+let gather_entropies f n =
+  Array.map
+    ~f:(fun t ->
+      let us = f n t in
       let ep, em, et =
         get_entropy (us_prep us t), get_entropy (us_mov us t), get_entropy us
       in
       [| t; ep; em; et |])
-    [| 0.; 0.01; 0.02; 0.05; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.8; 1. |]
+    t_preps
+
+
+let gather_norms n =
+  Array.map
+    ~f:(fun t ->
+      let us = us n t in
+      let ep, em, et = get_norm (us_prep us t), get_norm (us_mov us t), get_norm us in
+      [| t; ep; em; et |])
+    t_preps
 
 
 let _ =
-  Mat.save_txt ~out:(in_dir "entropies_7") (Mat.of_arrays gather_entropies);
-  Mat.save_txt ~out:(in_dir "prep_idx_7") (Mat.of_arrays gather_energies)
+  Array.init 8 ~f:(fun n ->
+      Mat.save_txt
+        ~out:(in_dir (Printf.sprintf "entropies_%i" n))
+        (Mat.of_arrays (gather_entropies us n));
+      Mat.save_txt
+        ~out:(in_dir (Printf.sprintf "entropies_x_%i" n))
+        (Mat.of_arrays (gather_entropies xs n));
+      Mat.save_txt
+        ~out:(in_dir (Printf.sprintf "prep_idx_%i" n))
+        (Mat.of_arrays (gather_energies n));
+      Mat.save_txt
+        ~out:(in_dir (Printf.sprintf "ranks_%i" n))
+        (Mat.of_arrays (gather_ranks n));
+      Mat.save_txt
+        ~out:(in_dir (Printf.sprintf "norms_%i" n))
+        (Mat.of_arrays (gather_norms n)))
