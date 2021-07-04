@@ -96,7 +96,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         let pct_change = Float.(abs (c -. !cprev) /. !cprev) in
         cprev := c;
         Stdio.printf "\n loss %f || Iter %i \n%!" c _k;
-        Float.(pct_change < 1E-3)
+        Float.(pct_change < 1E-4)
     in
     let us =
       match u_init with

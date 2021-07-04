@@ -137,7 +137,7 @@ module Arm_Linear = struct
 
 
   let dyn_u =
-    let dyn_u ~theta ~task =
+    let _dyn_u ~theta ~task =
       let b = Owl_parameters.extract theta.b in
       let m = AD.Mat.col_num b in
       let dt = AD.F task.dt in
@@ -146,5 +146,5 @@ module Arm_Linear = struct
       in
       fun ~k:_ ~x:_ ~u:_ -> AD.Maths.(transpose (mat * dt))
     in
-    Some dyn_u
+    Some _dyn_u
 end
