@@ -8,7 +8,8 @@ type task =
   ; theta0 : AD.t
   ; t_prep : float
   ; t_mov : float
-  ; t_hold : float option
+  ; t_hold : float option 
+  ; scale_lambda : float option
   ; dt : float
   ; tau : float
   }

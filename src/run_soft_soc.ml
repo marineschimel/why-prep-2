@@ -22,8 +22,8 @@ let n_output = 2
 let n_targets = 8
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 let t_preps = [| 0.; 0.01; 0.02; 0.05; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.8; 1. |]
-let c = Mat.gaussian ~sigma:0.1 n_out m 
-let _ = C.root_perform (fun ()-> Mat.save_txt ~out:(in_data_dir "c") c)
+(* let c = Mat.gaussian ~sigma:0.2 n_out m 
+let _ = C.root_perform (fun ()-> Mat.save_txt ~out:(in_data_dir "c") c) *)
 
 let tasks =
   Array.init
@@ -58,7 +58,7 @@ let save_results suffix xs us =
 module U = Priors.Gaussian
 module D = Dynamics.Arm_Linear
 
-module L = Likelihoods.End (struct
+module L = Likelihoods.Soft_End (struct
   let label = "output"
 end)
 
@@ -66,11 +66,17 @@ let prms =
   let open Owl_parameters in 
   C.broadcast' (fun () ->
   let likelihood =
-    Likelihoods.End_P.
+    Likelihoods.Soft_End_P.
       { c =
-          (pinned : setter) (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
+          (pinned : setter)
+            (AD.Maths.concatenate
+               ~axis:1
+               [| AD.Mat.zeros n_out 4
+                ; AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c_opt" data_dir))
+               |])
       ; c_mask =
-          None
+          Some
+            (AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros n_out 4; AD.Mat.ones n_out m |])
       ; qs_coeff = (pinned : setter) (AD.F 1.)
       ; t_coeff = (pinned : setter) (AD.F 0.5)
       ; g_coeff = (pinned : setter) (AD.F 1.)
@@ -83,7 +89,7 @@ let prms =
             (AD.pack_arr (Mat.((load_txt (Printf.sprintf "%s/w_rec" data_dir)) - eye m)))
       ; b = (pinned : setter) (AD.Mat.eye m)
       ; c =
-          (pinned : setter) (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
+          (pinned : setter) (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c_opt" data_dir)))
       }
   in
   let prior =

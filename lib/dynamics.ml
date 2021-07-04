@@ -79,11 +79,9 @@ module Arm_Linear = struct
     let tau = task.tau in
     let a = Owl_parameters.extract theta.a in
     let a = AD.Maths.(a / AD.F tau) in
-    let t_prep = task.t_prep in
     let dt = task.dt in
     let _dt = AD.F dt in
-    let n_prep = Float.to_int (t_prep /. dt) in
-    fun ~k ~x ~u ->
+    fun ~k:_ ~x ~u ->
       let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
       let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
       let xst = AD.Maths.transpose xs in
@@ -92,9 +90,6 @@ module Arm_Linear = struct
       let tau = AD.Maths.(c *@ xst) |> AD.Maths.transpose in
       let dotdot = M.theta_dot_dot s tau in
       let new_thetas =
-        if k < n_prep
-        then thetas
-        else
           AD.Maths.(
             of_arrays
               [| [| s.x1 + (_dt * s.x1_dot)
@@ -117,15 +112,12 @@ module Arm_Linear = struct
       let ms = ms ~prms:theta in
       let m = AD.Mat.row_num a in
       let n = m + 4 in
-      let t_prep = task.t_prep in
       let dt = task.dt in
       let _dt = AD.F dt in
-      let n_prep = Float.to_int (t_prep /. dt) in
       let c = Owl_parameters.extract theta.c in
-      fun ~k ~x ~u:_ ->
+      fun ~k:_ ~x ~u:_ ->
         let nminv = AD.Maths.(neg (minv ~x)) in
         let m21, m22 = ms ~x in
-        let switch = if k < n_prep then AD.F 0. else AD.F 1. in
         let b1 =
           AD.Maths.concatenate
             ~axis:1
@@ -138,14 +130,14 @@ module Arm_Linear = struct
         and b3 =
           AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros m 2; AD.Mat.zeros m 2; at |]
         in
-        let mat = AD.Maths.(concatenate ~axis:0 [| b1 * switch; switch * b2; b3 |]) in
+        let mat = AD.Maths.(concatenate ~axis:0 [| b1; b2; b3 |]) in
         AD.Maths.((mat * _dt) + AD.Mat.eye n) |> AD.Maths.transpose
     in
     Some _dyn_x
 
 
   let dyn_u =
-    let dyn_u ~theta ~task =
+    let _dyn_u ~theta ~task =
       let b = Owl_parameters.extract theta.b in
       let m = AD.Mat.col_num b in
       let dt = AD.F task.dt in
@@ -154,5 +146,5 @@ module Arm_Linear = struct
       in
       fun ~k:_ ~x:_ ~u:_ -> AD.Maths.(transpose (mat * dt))
     in
-    Some dyn_u
+    Some _dyn_u
 end

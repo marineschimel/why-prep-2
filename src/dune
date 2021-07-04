@@ -1,15 +1,5 @@
 (executables
- (names run_soc costs)
- (libraries
-  owl
-  owl-ode
-  owl-ode-sundials
-  cmdargs
-  owl-opt
-  owl-opt-lbfgs
-  arm
-  ilqr
-  lib
-  core)
+ (names run_soc run_sparse_soc run_soc_noises costs run_soft_soc)
+ (libraries owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))

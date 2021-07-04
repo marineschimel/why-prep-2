@@ -12,8 +12,8 @@ let targets = Mat.load_txt (Printf.sprintf "%s/target_thetas" data_dir)
 let target i = Mat.row targets i
 let t_prep = 0.3
 let dt = 1E-3
-let lambda_prep = 1E-6
-let lambda_mov = 1E-6
+let lambda_prep = 1E-5
+let lambda_mov = 1E-5
 let n_out = 2
 let n = 204
 let m = 200
@@ -21,9 +21,9 @@ let tau = 150E-3
 let n_output = 2
 let n_targets = 8
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-let t_preps = [| 0.; 0.01; 0.02; 0.05; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.8; 1. |]
-let c = Mat.gaussian ~sigma:0.1 n_out m 
-let _ = C.root_perform (fun ()-> Mat.save_txt ~out:(in_data_dir "c") c)
+let t_preps = [| 0.; 0.01; 0.02; 0.05; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5 |]
+let c = Mat.gaussian ~sigma:0.8 n_out m 
+let _ = C.root_perform (fun ()-> Mat.save_txt ~out:(in_data_dir "c_sparse") c)
 
 let tasks =
   Array.init
@@ -35,8 +35,7 @@ let tasks =
         { t_prep = t_preps.(n_time)
         ; t_mov = 0.4
         ; dt
-        ; t_hold = Some 0.2
-        ; scale_lambda = None
+        ; t_hold = Some 0.1
         ; target = AD.pack_arr (target n_target)
         ; theta0
         ; tau = 150E-3
@@ -55,7 +54,7 @@ let save_results suffix xs us =
   Owl.Mat.save_txt ~out:(file "us") us
 
 
-module U = Priors.Gaussian
+module U = Priors.Sparse
 module D = Dynamics.Arm_Linear
 
 module L = Likelihoods.End (struct
@@ -68,12 +67,18 @@ let prms =
   let likelihood =
     Likelihoods.End_P.
       { c =
-          (pinned : setter) (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
+          (pinned : setter)
+            (AD.Maths.concatenate
+               ~axis:1
+               [| AD.Mat.zeros n_out 4
+                ; AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c_sparse" data_dir))
+               |])
       ; c_mask =
-          None
+          Some
+            (AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros n_out 4; AD.Mat.ones n_out m |])
       ; qs_coeff = (pinned : setter) (AD.F 1.)
-      ; t_coeff = (pinned : setter) (AD.F 0.5)
-      ; g_coeff = (pinned : setter) (AD.F 1.)
+      ; t_coeff = (pinned : setter) (AD.F 1.)
+      ; g_coeff = (pinned : setter) (AD.F 50.)
       }
   in
   let dynamics =
@@ -83,11 +88,11 @@ let prms =
             (AD.pack_arr (Mat.((load_txt (Printf.sprintf "%s/w_rec" data_dir)) - eye m)))
       ; b = (pinned : setter) (AD.Mat.eye m)
       ; c =
-          (pinned : setter) (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
+          (pinned : setter) (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c_sparse" data_dir)))
       }
   in
   let prior =
-    Priors.Gaussian_P.
+    Priors.Sparse_P.
       { lambda_prep = (pinned : setter) (AD.F lambda_prep)
       ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
       }
