@@ -22,8 +22,8 @@ let n_output = 2
 let n_targets = 8
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 let t_preps = [| 0.; 0.01; 0.02; 0.05; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.8; 1. |]
-let c = Mat.gaussian ~sigma:0.1 n_out m 
-let _ = C.root_perform (fun ()-> Mat.save_txt ~out:(in_data_dir "c") c)
+let c = Mat.gaussian ~sigma:0.1 n_out m
+let _ = C.root_perform (fun () -> Mat.save_txt ~out:(in_data_dir "c") c)
 
 let tasks =
   Array.init
@@ -55,6 +55,9 @@ let save_results suffix xs us =
   Owl.Mat.save_txt ~out:(file "us") us
 
 
+let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
+let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
+
 module U = Priors.Gaussian
 module D = Dynamics.Arm_Linear
 
@@ -63,45 +66,48 @@ module L = Likelihoods.End (struct
 end)
 
 let prms =
-  let open Owl_parameters in 
+  let open Owl_parameters in
   C.broadcast' (fun () ->
-  let likelihood =
-    Likelihoods.End_P.
-      { c =
-          (pinned : setter) (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
-      ; c_mask =
-          None
-      ; qs_coeff = (pinned : setter) (AD.F 1.)
-      ; t_coeff = (pinned : setter) (AD.F 0.5)
-      ; g_coeff = (pinned : setter) (AD.F 1.)
-      }
-  in
-  let dynamics =
-    Dynamics.Arm_Linear_P.
-      { a =
-          (pinned : setter)
-            (AD.pack_arr (Mat.((load_txt (Printf.sprintf "%s/w_rec" data_dir)) - eye m)))
-      ; b = (pinned : setter) (AD.Mat.eye m)
-      ; c =
-          (pinned : setter) (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
-      }
-  in
-  let prior =
-    Priors.Gaussian_P.
-      { lambda_prep = (pinned : setter) (AD.F lambda_prep)
-      ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
-      }
-  in
-  Model.Generative_P.{ prior; dynamics; likelihood })
+      let likelihood =
+        Likelihoods.End_P.
+          { c =
+              (pinned : setter)
+                (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
+          ; c_mask = None
+          ; qs_coeff = (pinned : setter) (AD.F 1.)
+          ; t_coeff = (pinned : setter) (AD.F 0.5)
+          ; g_coeff = (pinned : setter) (AD.F 1.)
+          }
+      in
+      let dynamics =
+        Dynamics.Arm_Linear_P.
+          { a =
+              (pinned : setter)
+                (AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/w_rec" data_dir) - eye m))
+          ; b = (pinned : setter) (AD.Mat.eye m)
+          ; c =
+              (pinned : setter)
+                (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
+          }
+      in
+      let prior =
+        Priors.Gaussian_P.
+          { lambda_prep = (pinned : setter) (AD.F lambda_prep)
+          ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
+          }
+      in
+      Model.Generative_P.{ prior; dynamics; likelihood })
 
 
 module I = Model.ILQR (U) (D) (L)
 
 let _ =
+  let _ = save_prms "" prms in
   Array.mapi tasks ~f:(fun i t ->
       if Int.(i % C.n_nodes = C.rank)
       then (
         let n_target = Int.rem i n_targets in
         let t_prep = Float.to_int (1000. *. t.t_prep) in
         let xs, us = I.solve ~n ~m ~prms t in
-        save_results (Printf.sprintf "%i_%i" n_target t_prep) xs us))
+        save_results (Printf.sprintf "%i_%i" n_target t_prep) xs us;
+        save_task (Printf.sprintf "%i_%i" n_target t_prep) t))

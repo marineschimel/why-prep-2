@@ -14,7 +14,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
   let linesearch = U.requires_linesearch || D.requires_linesearch || L.requires_linesearch
 
   (* n : dimensionality of state space; m : input dimension *)
-  let solve ?u_init ~n ~m ~prms task =
+  let solve ?u_init ?(single_run = false) ~n ~m ~prms task =
     let open Generative_P in
     let module M = struct
       type theta = G.p
@@ -91,12 +91,12 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         AD.Maths.concatenate ~axis:1 [| task.theta0; AD.Mat.zeros 1 m |], prms
       in
       let cprev = ref 1E9 in
-      fun _k us ->
+      fun k us ->
         let c = loss ~theta x0 us in
         let pct_change = Float.(abs (c -. !cprev) /. !cprev) in
         cprev := c;
-        Stdio.printf "\n loss %f || Iter %i \n%!" c _k;
-        Float.(pct_change < 1E-4)
+        Stdio.printf "\n loss %f || Iter %i \n%!" c k;
+        if single_run then k >= 0 else Float.(pct_change < 1E-4)
     in
     let us =
       match u_init with
@@ -120,4 +120,8 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
     let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
     ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
     , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau )
+
+
+  let run ~ustars ~n ~m ~prms task =
+    solve ~u_init:ustars ~single_run:true ~n ~m ~prms task
 end
