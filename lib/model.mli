@@ -10,7 +10,8 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) : sig
   module G : module type of Owl_parameters.Make (Generative_P.Make (U.P) (D.P) (L.P))
 
   val solve
-    :  ?u_init:Mat.mat
+    :  ?arm:bool
+    -> ?u_init:Mat.mat
     -> ?single_run:bool
     -> n:int
     -> m:int

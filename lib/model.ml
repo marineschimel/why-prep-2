@@ -14,7 +14,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
   let linesearch = U.requires_linesearch || D.requires_linesearch || L.requires_linesearch
 
   (* n : dimensionality of state space; m : input dimension *)
-  let solve ?u_init ?(single_run = false) ~n ~m ~prms task =
+  let solve ?(arm = true) ?u_init ?(single_run = false) ~n ~m ~prms task =
     let open Generative_P in
     let module M = struct
       type theta = G.p
@@ -85,18 +85,21 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       let final_loss = final_cost
     end
     in
+    let x0 =
+      if arm
+      then AD.Maths.concatenate ~axis:1 [| task.theta0; AD.Mat.zeros 1 m |]
+      else AD.Mat.zeros 1 m
+    in
     let module IP = Dilqr.Default.Make (M) in
     let stop_ilqr loss ~prms =
-      let x0, theta =
-        AD.Maths.concatenate ~axis:1 [| task.theta0; AD.Mat.zeros 1 m |], prms
-      in
+      let x0, theta = x0, prms in
       let cprev = ref 1E9 in
       fun k us ->
         let c = loss ~theta x0 us in
         let pct_change = Float.(abs (c -. !cprev) /. !cprev) in
         cprev := c;
-        Stdio.printf "\n loss %f || Iter %i \n%!" c k;
-        if single_run then k >= 0 else Float.(pct_change < 1E-4)
+        Stdio.printf "\n loss %f || pct_change %f || Iter %i \n%!" c pct_change k;
+        if single_run then k >= 0 else Float.(pct_change < 1E-2)
     in
     let us =
       match u_init with
@@ -109,13 +112,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
           x0 = 0    x1  x2 ......   xT xT+1
       *)
     let tau =
-      IP.ilqr
-        ~linesearch
-        ~stop:(stop_ilqr IP.loss ~prms)
-        ~us
-        ~x0:(AD.Maths.concatenate ~axis:1 [| task.theta0; AD.Mat.zeros 1 m |])
-        ~theta:prms
-        ()
+      IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
     in
     let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
     ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau

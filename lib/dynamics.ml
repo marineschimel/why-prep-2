@@ -90,18 +90,18 @@ module Arm_Linear = struct
       let tau = AD.Maths.(c *@ xst) |> AD.Maths.transpose in
       let dotdot = M.theta_dot_dot s tau in
       let new_thetas =
-          AD.Maths.(
-            of_arrays
-              [| [| s.x1 + (_dt * s.x1_dot)
-                  ; s.x2 + (_dt * s.x2_dot)
-                  ; s.x1_dot + (_dt * AD.Maths.get_item dotdot 0 0)
-                  ; s.x2_dot + (_dt * AD.Maths.get_item dotdot 1 0)
-                 |]
-              |])
+        AD.Maths.(
+          of_arrays
+            [| [| s.x1 + (_dt * s.x1_dot)
+                ; s.x2 + (_dt * s.x2_dot)
+                ; s.x1_dot + (_dt * AD.Maths.get_item dotdot 0 0)
+                ; s.x2_dot + (_dt * AD.Maths.get_item dotdot 1 0)
+               |]
+            |])
       and new_x = AD.Maths.(xs + dx) in
       AD.Maths.(concatenate ~axis:1 [| new_thetas; new_x |])
 
-  
+
   let dyn_x =
     (* Marine to check this *)
     let _dyn_x ~theta ~task =
@@ -147,4 +147,46 @@ module Arm_Linear = struct
       fun ~k:_ ~x:_ ~u:_ -> AD.Maths.(transpose (mat * dt))
     in
     Some _dyn_u
+end
+
+module Linear = struct
+  module P = Owl_parameters.Make (Linear_P)
+  open Linear_P
+  module M = Arm.Make (Arm.Defaults)
+
+  let requires_linesearch = false
+
+  let dyn ~theta ~task =
+    let b = Owl_parameters.extract theta.b in
+    let tau = task.tau in
+    let a = Owl_parameters.extract theta.a in
+    let a = AD.Maths.(a / AD.F tau) in
+    let dt = task.dt in
+    let _dt = AD.F dt in
+    fun ~k:_ ~x ~u ->
+      let dx = AD.Maths.(((x *@ a) + (u *@ b)) * _dt) in
+      AD.Maths.(x + dx)
+
+
+  let dyn_x =
+    (* Marine to check this *)
+    let _dyn_x ~theta ~task =
+      let tau = task.tau in
+      let a = Owl_parameters.extract theta.a in
+      let a = AD.Maths.(a / AD.F tau) in
+      let n = AD.Mat.row_num a in
+      let dt = task.dt in
+      let _dt = AD.F dt in
+      fun ~k:_ ~x:_ ~u:_ -> AD.Maths.((a * _dt) + AD.Mat.eye n)
+    in
+    Some _dyn_x
+
+
+  let dyn_u =
+    let _dyn_u ~theta ~task =
+      let b = Owl_parameters.extract theta.b in
+      let dt = AD.F task.dt in
+      fun ~k:_ ~x:_ ~u:_ -> AD.Maths.(b * dt)
+    in
+    None
 end
