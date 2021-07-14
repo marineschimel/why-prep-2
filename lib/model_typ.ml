@@ -9,6 +9,7 @@ type task =
   ; t_prep : float
   ; t_mov : float
   ; t_hold : float option
+  ; t_pauses : float array option (*give an array of pause times during all the reaches*)
   ; scale_lambda : float option
   ; dt : float
   ; tau : float
@@ -20,6 +21,7 @@ module Generative_P = struct
     ; dynamics : 'b
     ; likelihood : 'c
     }
+  [@@deriving accessors ~submodule:A]
 
   module Make (U : Owl_parameters.T) (D : Owl_parameters.T) (L : Owl_parameters.T) =
   struct

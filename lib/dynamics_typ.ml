@@ -18,6 +18,7 @@ module Arm_Linear_P = struct
     ; b : 'a
     ; c : 'a
     }
+    [@@deriving accessors ~submodule:A]
 
   let map ~f x = { a = f x.a; b = f x.b; c = f x.c }
 
@@ -31,6 +32,7 @@ module Linear_P = struct
     { a : 'a
     ; b : 'a
     }
+    [@@deriving accessors ~submodule:A]
 
   let map ~f x = { a = f x.a; b = f x.b }
 

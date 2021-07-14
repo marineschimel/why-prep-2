@@ -20,6 +20,7 @@ end
 
 module Gaussian_P = struct
   type 'a prm = { lambda_prep : 'a; lambda_mov : 'a }
+  [@@deriving accessors ~submodule:A]
 
   (* first bin has the interpretation of a rescaling of the std, not the variance *)
   let map ~f x = { lambda_prep = f x.lambda_prep; lambda_mov = f x.lambda_mov }
@@ -32,6 +33,7 @@ end
 
 module Sparse_P = struct
   type 'a prm = { lambda_prep : 'a; lambda_mov : 'a }
+  [@@deriving accessors ~submodule:A]
 
   (* first bin has the interpretation of a rescaling of the std, not the variance *)
   let map ~f x = { lambda_prep = f x.lambda_prep; lambda_mov = f x.lambda_mov }

@@ -22,9 +22,20 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       let primal' = primal'
 
       let n_steps =
-        match task.t_hold with
-        | Some th -> Float.to_int ((task.t_prep +. task.t_mov +. th) /. task.dt)
-        | None -> Float.to_int ((task.t_prep +. task.t_mov) /. task.dt)
+        match task.t_pauses with
+        | Some tps ->
+          let n_tgts = Array.length tps in
+          let sum_pauses = Mat.sum' (Mat.of_arrays [| tps |]) in
+          (match task.t_hold with
+          | Some th ->
+            Float.to_int
+              ((task.t_prep +. (Float.of_int n_tgts *. task.t_mov) +. sum_pauses +. th)
+              /. task.dt)
+          | None -> Float.to_int ((task.t_prep +. task.t_mov) /. task.dt))
+        | None ->
+          (match task.t_hold with
+          | Some th -> Float.to_int ((task.t_prep +. task.t_mov +. th) /. task.dt)
+          | None -> Float.to_int ((task.t_prep +. task.t_mov) /. task.dt))
 
 
       let cost ~theta =

@@ -9,7 +9,8 @@
   arm
   owl-parameters
   base
+  accessor
   comm
   dilqr)
  (preprocess
-  (pps ppx-owl-opt)))
+  (pps ppx-owl-opt ppx_accessor)))

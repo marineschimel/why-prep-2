@@ -299,3 +299,166 @@ struct
     in
     Some _neg_hess_t
 end
+
+module Successive (X : sig
+  val label : string
+end) =
+struct
+  module P = Owl_parameters.Make (Successive_P)
+  open Successive_P
+
+  let requires_linesearch = true
+  let label = X.label
+
+  let neg_logp_t ~prms ~task =
+    let n_prep = Float.to_int (task.t_prep /. task.dt) in
+    let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
+    let pause =
+      match task.t_pauses with
+      | Some t -> t.(0)
+      | None -> 0.
+    in
+    let n_2 = n_1 + Float.to_int ((pause +. task.t_mov) /. task.dt) in
+    let qs_coeff = Owl_parameters.extract prms.qs_coeff in
+    let g_coeff = Owl_parameters.extract prms.g_coeff in
+    let t_coeff = Owl_parameters.extract prms.t_coeff in
+    let c = Owl_parameters.extract prms.c in
+    let c_t = AD.Maths.transpose c in
+    let tgt1 =
+      AD.Mat.row task.target 0 |> fun z -> AD.Maths.get_slice [ []; [ 0; 1 ] ] z
+    in
+    let tgt2 =
+      AD.Mat.row task.target 1 |> fun z -> AD.Maths.get_slice [ []; [ 0; 1 ] ] z
+    in
+    let dt = task.dt in
+    let _dt = AD.F dt in
+    let theta0 = task.theta0 in
+    fun ~k ~z_t ->
+      let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] z_t in
+      let theta_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] thetas in
+      let theta_vel = AD.Maths.get_slice [ []; [ 2; 3 ] ] thetas in
+      let x_t = AD.Maths.get_slice [ []; [ 4; -1 ] ] z_t in
+      if k < n_prep
+      then (
+        let mu_t = AD.Maths.(x_t *@ c_t) in
+        AD.Maths.(
+          (F 0.5 * sum' (t_coeff * sqr mu_t))
+          + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0))))
+      else if k > n_1 && k < n_2
+      then
+        AD.Maths.(
+          F 0.5
+          * g_coeff
+          * (l2norm_sqr' (theta_pos - tgt1) + (F 0.1 * l2norm_sqr' theta_vel)))
+      else if k > n_2
+      then
+        AD.Maths.(
+          F 0.5
+          * g_coeff
+          * (l2norm_sqr' (theta_pos - tgt2) + (F 0.1 * l2norm_sqr' theta_vel)))
+      else AD.F 0.
+
+
+  let neg_jac_t =
+    let _neg_jac_t ~prms ~task =
+      let pause =
+        match task.t_pauses with
+        | Some t -> t.(0)
+        | None -> 0.
+      in
+      let n_prep = Float.to_int (task.t_prep /. task.dt) in
+      let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
+      let n_2 = n_1 + Float.to_int ((pause +. task.t_mov) /. task.dt) in
+      let qs_coeff = Owl_parameters.extract prms.qs_coeff in
+      let g_coeff = Owl_parameters.extract prms.g_coeff in
+      let t_coeff = Owl_parameters.extract prms.t_coeff in
+      let c = Owl_parameters.extract prms.c in
+      let m = AD.Mat.col_num c in
+      let c_t = AD.Maths.transpose c in
+      let tgt1 =
+        AD.Mat.row task.target 0 |> fun z -> AD.Maths.get_slice [ []; [ 0; 1 ] ] z
+      in
+      let tgt2 =
+        AD.Mat.row task.target 1 |> fun z -> AD.Maths.get_slice [ []; [ 0; 1 ] ] z
+      in
+      let dt = task.dt in
+      let _dt = AD.F dt in
+      let theta0 = task.theta0 in
+      fun ~k ~z_t ->
+        let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] z_t in
+        let theta_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] thetas in
+        let theta_vel = AD.Maths.get_slice [ []; [ 2; 3 ] ] thetas in
+        let x = AD.Maths.get_slice [ []; [ 4; -1 ] ] z_t in
+        let r_state =
+          if k < n_prep then AD.Maths.(t_coeff * x *@ c_t *@ c) else AD.Mat.zeros 1 m
+        in
+        let r_xp =
+          if k < n_prep
+          then AD.Maths.(qs_coeff * (theta_pos - theta0))
+          else if k > n_1 && k < n_2
+          then AD.Maths.(g_coeff * (theta_pos - tgt1))
+          else if k > n_2
+          then AD.Maths.(g_coeff * (theta_pos - tgt2))
+          else AD.Mat.zeros 1 2
+        in
+        let r_xv =
+          if k < n_prep
+          then AD.Maths.(qs_coeff * theta_vel)
+          else if k > n_1 && k < n_2
+          then AD.Maths.(F 0.1 * g_coeff * theta_vel)
+          else if k > n_2
+          then AD.Maths.(F 0.1 * g_coeff * theta_vel)
+          else AD.Mat.zeros 1 2
+        in
+        AD.Maths.(concatenate ~axis:1 [| r_xp; r_xv; r_state |])
+    in
+    Some _neg_jac_t
+
+
+  let neg_hess_t =
+    let _neg_hess_t ~prms ~task =
+      let pause =
+        match task.t_pauses with
+        | Some t -> t.(0)
+        | None -> 0.
+      in
+      let n_prep = Float.to_int (task.t_prep /. task.dt) in
+      let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
+      let n_2 = n_1 + Float.to_int ((pause +. task.t_mov) /. task.dt) in
+      let qs_coeff = Owl_parameters.extract prms.qs_coeff in
+      let g_coeff = Owl_parameters.extract prms.g_coeff in
+      let t_coeff = Owl_parameters.extract prms.t_coeff in
+      let c = Owl_parameters.extract prms.c in
+      let dt = task.dt in
+      let _dt = AD.F dt in
+      let m = AD.Mat.col_num c in
+      let c_term = AD.Maths.(t_coeff * transpose c *@ c) in
+      fun ~k ~z_t:_ ->
+        let mu =
+          if k < n_prep
+          then AD.Maths.(qs_coeff * AD.Mat.eye 2)
+          else if k > n_1 && k < n_2
+          then AD.Maths.(g_coeff * AD.Mat.eye 2)
+          else if k > n_2
+          then AD.Maths.(g_coeff * AD.Mat.eye 2)
+          else AD.Mat.zeros 2 2
+        in
+        let mv =
+          if k < n_prep
+          then AD.Maths.(qs_coeff * AD.Mat.eye 2)
+          else if k > n_1 && k < n_2
+          then AD.Maths.(AD.F 0.1 * g_coeff * AD.Mat.eye 2)
+          else if k > n_2
+          then AD.Maths.(AD.F 0.1 * g_coeff * AD.Mat.eye 2)
+          else AD.Mat.zeros 2 2
+        in
+        let mx = if k < n_prep then c_term else AD.Mat.zeros m m in
+        let mf1 = AD.Maths.concatenate ~axis:1 [| mu; AD.Mat.zeros 2 (m + 2) |] in
+        let mf2 =
+          AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros 2 2; mv; AD.Mat.zeros 2 m |]
+        in
+        let mf3 = AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros m 4; mx |] in
+        AD.Maths.concatenate ~axis:0 [| mf1; mf2; mf3 |]
+    in
+    Some _neg_hess_t
+end

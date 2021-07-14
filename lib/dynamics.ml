@@ -79,6 +79,7 @@ module Arm_Linear = struct
     let tau = task.tau in
     let a = Owl_parameters.extract theta.a in
     let a = AD.Maths.(a / AD.F tau) in
+    let b = AD.Maths.(b / AD.F tau) in
     let dt = task.dt in
     let _dt = AD.F dt in
     fun ~k:_ ~x ~u ->
@@ -141,6 +142,8 @@ module Arm_Linear = struct
       let b = Owl_parameters.extract theta.b in
       let m = AD.Mat.col_num b in
       let dt = AD.F task.dt in
+      let tau = task.tau in
+      let b = AD.Maths.(b / AD.F tau) in
       let mat =
         AD.Maths.concatenate ~axis:0 [| AD.Mat.zeros 2 m; AD.Mat.zeros 2 m; b |]
       in
@@ -159,6 +162,7 @@ module Linear = struct
   let dyn ~theta ~task =
     let b = Owl_parameters.extract theta.b in
     let tau = task.tau in
+    let b = AD.Maths.(b / AD.F tau) in
     let a = Owl_parameters.extract theta.a in
     let a = AD.Maths.(a / AD.F tau) in
     let dt = task.dt in
@@ -186,7 +190,9 @@ module Linear = struct
     let _dyn_u ~theta ~task =
       let b = Owl_parameters.extract theta.b in
       let dt = AD.F task.dt in
+      let tau = task.tau in
+      let b = AD.Maths.(b / AD.F tau) in
       fun ~k:_ ~x:_ ~u:_ -> AD.Maths.(b * dt)
     in
-    None
+    Some _dyn_u
 end
