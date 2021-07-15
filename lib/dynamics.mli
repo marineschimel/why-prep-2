@@ -12,3 +12,10 @@ end
 module Linear : sig
   include Dynamics_T with type 'a P.prm = 'a Linear_P.prm
 end
+
+module Arm_Plus (X : sig
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val phi_u : AD.t -> AD.t
+  val d_phi_u : AD.t -> AD.t
+end) : Dynamics_T with type 'a P.prm = 'a Arm_Plus_P.prm

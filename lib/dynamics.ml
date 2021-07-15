@@ -196,3 +196,146 @@ module Linear = struct
     in
     Some _dyn_u
 end
+
+module Arm_Plus (X : sig
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val phi_u : AD.t -> AD.t
+  val d_phi_u : AD.t -> AD.t
+end) =
+struct
+  module P = Owl_parameters.Make (Arm_Plus_P)
+  open Arm_Plus_P
+  module M = Arm.Make (Arm.Defaults)
+  open X
+
+  let requires_linesearch = true
+
+  let minv ~x =
+    let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
+    let st = Arm.pack_state thetas in
+    AD.Linalg.inv (M.inertia st)
+
+
+  let ms ~prms ~x =
+    let open AD.Maths in
+    let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
+    let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
+    let st = Arm.pack_state thetas in
+    let s = Arm.pack_state thetas in
+    let c = Owl_parameters.extract prms.c in
+    let tau = AD.Maths.(c *@ transpose (phi_x xs)) |> AD.Maths.transpose in
+    let dotdot = M.theta_dot_dot s tau in
+    let dotdot1, dotdot2 = AD.Mat.get dotdot 0 0, AD.Mat.get dotdot 1 0 in
+    let m12 =
+      let cst1 = AD.F M._A2 * sin st.x2 * AD.F (-1.)
+      and cst2 = AD.F M._A2 * cos st.x2
+      and mat2 =
+        [| [| AD.F 0.; neg st.x2_dot * ((F 2. * st.x1_dot) + st.x2_dot) |]
+         ; [| AD.F 0.; sqr st.x1_dot |]
+        |]
+        |> of_arrays
+      and mat1 =
+        [| [| AD.F 0.; (F 2. * dotdot1) + dotdot2 |]; [| F 0.; dotdot1 |] |] |> of_arrays
+      in
+      (cst2 * mat2) + (cst1 * mat1)
+    in
+    let m22 =
+      let cst1 = F M._A2 * sin st.x2 in
+      let mat1 =
+        [| [| AD.F 2. * neg st.x2_dot; AD.F 2. * neg (st.x2_dot + st.x1_dot) |]
+         ; [| AD.F 2. * st.x1_dot; AD.F 0. |]
+        |]
+        |> of_arrays
+      in
+      (cst1 * mat1) + M._B
+    in
+    m12, m22
+
+
+  let dyn ~theta ~task =
+    let b = Owl_parameters.extract theta.b in
+    let c = Owl_parameters.extract theta.c in
+    let tau = task.tau in
+    let a = Owl_parameters.extract theta.a in
+    let a = AD.Maths.(a / AD.F tau) in
+    let b = AD.Maths.(b / AD.F tau) in
+    let dt = task.dt in
+    let _dt = AD.F dt in
+    fun ~k:_ ~x ~u ->
+      let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
+      let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
+      let xst = AD.Maths.transpose xs in
+      let s = Arm.pack_state thetas in
+      let dx = AD.Maths.(((phi_x xs *@ a) + (phi_u u *@ b)) * _dt) in
+      let tau = AD.Maths.(c *@ xst) |> AD.Maths.transpose in
+      let dotdot = M.theta_dot_dot s tau in
+      let new_thetas =
+        AD.Maths.(
+          of_arrays
+            [| [| s.x1 + (_dt * s.x1_dot)
+                ; s.x2 + (_dt * s.x2_dot)
+                ; s.x1_dot + (_dt * AD.Maths.get_item dotdot 0 0)
+                ; s.x2_dot + (_dt * AD.Maths.get_item dotdot 1 0)
+               |]
+            |])
+      and new_x = AD.Maths.(xs + dx) in
+      AD.Maths.(concatenate ~axis:1 [| new_thetas; new_x |])
+
+
+  let dyn_x =
+    (* Marine to check this *)
+    let _dyn_x ~theta ~task =
+      let tau = task.tau in
+      let a = Owl_parameters.extract theta.a in
+      let a = AD.Maths.(a / AD.F tau) in
+      let at = AD.Maths.transpose a in
+      let ms = ms ~prms:theta in
+      let m = AD.Mat.row_num a in
+      let n = m + 4 in
+      let dt = task.dt in
+      let _dt = AD.F dt in
+      let c = Owl_parameters.extract theta.c in
+      fun ~k:_ ~x ~u:_ ->
+        let nminv = AD.Maths.(neg (minv ~x)) in
+        let m21, m22 = ms ~x in
+        let b1 =
+          AD.Maths.concatenate
+            ~axis:1
+            [| AD.Mat.zeros 2 2; AD.Mat.eye 2; AD.Mat.zeros 2 m |]
+        and b2 =
+          AD.Maths.(
+            concatenate
+              ~axis:1
+              [| nminv *@ m21
+               ; nminv *@ m22
+               ; neg AD.Maths.(nminv *@ c *@ transpose (d_phi_x x))
+              |])
+        and b3 =
+          AD.Maths.concatenate
+            ~axis:1
+            [| AD.Mat.zeros m 2; AD.Mat.zeros m 2; AD.Maths.(d_phi_x x *@ at) |]
+        in
+        let mat = AD.Maths.(concatenate ~axis:0 [| b1; b2; b3 |]) in
+        AD.Maths.((mat * _dt) + AD.Mat.eye n) |> AD.Maths.transpose
+    in
+    Some _dyn_x
+
+
+  let dyn_u =
+    let _dyn_u ~theta ~task =
+      let b = Owl_parameters.extract theta.b in
+      let m = AD.Mat.col_num b in
+      let dt = AD.F task.dt in
+      let tau = task.tau in
+      let b = AD.Maths.(b / AD.F tau) in
+      fun ~k:_ ~x:_ ~u ->
+        let mat =
+          AD.Maths.concatenate
+            ~axis:0
+            [| AD.Mat.zeros 2 m; AD.Mat.zeros 2 m; AD.Maths.(d_phi_u u *@ b) |]
+        in
+        AD.Maths.(mat * dt)
+    in
+    None
+end
