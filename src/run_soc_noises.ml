@@ -22,7 +22,7 @@ let n_output = 2
 let n_targets = 8
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 let t_preps = [| 0.; 0.01; 0.02; 0.05; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.8; 1. |]
-let sl = [| 1E-6; 5E-6; 1E-5; 5E-5; 1E-4; 5E-4; 1E-3; 5E-3; 1E-2; 5E-2; 1E-1 |]
+let sl = [| 1E-4; 5E-5; 1E-5; 5E-6|]
 let n_s = Array.length sl
 let c = Mat.gaussian ~sigma:0.1 n_out m
 let _ = C.root_perform (fun () -> Mat.save_txt ~out:(in_data_dir "c") c)
@@ -59,8 +59,8 @@ let save_results suffix xs us =
   Owl.Mat.save_txt ~out:(file "us") us
 
 
-let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
-let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
+let save_prms prms = Misc.save_bin (Printf.sprintf "%s/prms" dir) prms
+let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/task_%s" dir suffix) task
 
 module U = Priors.Gaussian
 module D = Dynamics.Arm_Linear
@@ -87,7 +87,7 @@ let prms =
         Dynamics.Arm_Linear_P.
           { a =
               (pinned : setter)
-                (AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/w_rec" data_dir) - eye m))
+                (AD.pack_arr (Mat.transpose (Mat.(load_txt (Printf.sprintf "%s/w_rec" data_dir) - eye m))))
           ; b = (pinned : setter) (AD.Mat.eye m)
           ; c =
               (pinned : setter)
@@ -106,7 +106,7 @@ let prms =
 module I = Model.ILQR (U) (D) (L)
 
 let _ =
-  let _ = C.root_perform (fun () -> save_prms "" prms) in
+  let _ = C.root_perform (fun () -> save_prms prms) in
   Array.mapi tasks ~f:(fun i t ->
       if Int.(i % C.n_nodes = C.rank)
       then (
@@ -117,4 +117,4 @@ let _ =
         | Some scaling ->
           let xs, us = I.solve ~n ~m ~prms t in
           save_results (Printf.sprintf "%i_%i_%.6f" n_target t_prep scaling) xs us;
-          save_task (Printf.sprintf "%i_%i" n_target t_prep) t))
+          save_task (Printf.sprintf "%i_%i_%.6f" n_target t_prep scaling) t))

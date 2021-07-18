@@ -319,7 +319,7 @@ struct
         let mat = AD.Maths.(concatenate ~axis:0 [| b1; b2; b3 |]) in
         AD.Maths.((mat * _dt) + AD.Mat.eye n) |> AD.Maths.transpose
     in
-    Some _dyn_x
+    None
 
 
   let dyn_u =

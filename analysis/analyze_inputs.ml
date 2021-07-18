@@ -15,7 +15,15 @@ let us i t_prep =
 let xs i t_prep =
   Mat.load_txt (in_dir (Printf.sprintf "xs_%i_%i" i Float.(to_int (1000. *. t_prep))))
 
+let thetas i t_prep =
+  Mat.load_txt (in_dir (Printf.sprintf "thetas_%i_%i" i Float.(to_int (1000. *. t_prep))))
 
+
+let hands i t_prep =
+  let thetas = 
+  Mat.load_txt (in_dir (Printf.sprintf "thetas_%i_%i" i Float.(to_int (1000. *. t_prep))))
+  in AD.unpack_arr (AD.Mat.map_by_row (fun x -> Arm.unpack_state_diff (M.hand_of (Arm.pack_state x))) (AD.pack_arr thetas))
+  
 let us_mov us t_prep =
   Mat.get_slice [ [ Float.(to_int (1000. *. t_prep)) + 1; -1 ]; [] ] us
 
@@ -41,7 +49,7 @@ let get_rank us =
 let energy us = Mat.l2norm_sqr' us
 let abs us = Mat.mean' (Mat.abs us)
 
-let get_mov_onset ~threshold ~thetas =
+let get_mov_onset ~thetas =
   let hands =
     AD.Mat.map_by_row
       (fun x -> Arm.unpack_state_diff (M.hand_of (Arm.pack_state x)))
@@ -49,6 +57,7 @@ let get_mov_onset ~threshold ~thetas =
   in
   let vel = Mat.get_fancy [ R [ 0; -1 ]; L [ 1; 3 ] ] (AD.unpack_arr hands) in
   let norm_vel = Mat.l2norm ~axis:1 vel in
+  let threshold = 0.05 *. Mat.max' norm_vel in 
   let idces = Mat.filter (fun x -> Float.(x > threshold)) norm_vel in
   let flt_idces =
     Array.map ~f:(fun x -> Float.of_int x) idces |> fun z -> Mat.of_array z 1 (-1)
@@ -93,7 +102,30 @@ let gather_norms n =
     t_preps
 
 
-let _ =
+let get_move_onset n = 
+  Array.map
+  ~f:(fun t ->
+    let thetas = thetas n t in
+  let time_onset = get_mov_onset ~thetas
+  in  [| t; time_onset |]) t_preps
+
+let save_hands n =  Array.iter
+~f:(fun t ->
+  let hands = hands n t in 
+Mat.save_txt ~out:(in_dir (Printf.sprintf "hands_%i_%i" n Float.(to_int (1000. *. t)))) hands) t_preps
+
+let _ = Array.init 8 ~f:(fun n ->
+  save_hands n;
+  Mat.save_txt
+    ~out:(in_dir (Printf.sprintf "analysis/prep_idx_%i" n))
+    (Mat.of_arrays (gather_energies n));
+  Mat.save_txt
+    ~out:(in_dir (Printf.sprintf "analysis/norms_%i" n))
+    (Mat.of_arrays (gather_norms n));
+  Mat.save_txt
+    ~out:(in_dir (Printf.sprintf "analysis/onset_%i" n))
+    (Mat.of_arrays (get_move_onset n)))
+(* let _ =
   Array.init 8 ~f:(fun n ->
       Mat.save_txt
         ~out:(in_dir (Printf.sprintf "entropies_%i" n))
@@ -109,4 +141,4 @@ let _ =
         (Mat.of_arrays (gather_ranks n));
       Mat.save_txt
         ~out:(in_dir (Printf.sprintf "norms_%i" n))
-        (Mat.of_arrays (gather_norms n)))
+        (Mat.of_arrays (gather_norms n))) *)
