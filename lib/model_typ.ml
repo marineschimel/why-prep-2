@@ -1,4 +1,5 @@
 module AD = Owl.Algodiff.D
+open Readout
 
 (** Data type *)
 open Owl_parameters
@@ -40,5 +41,30 @@ module Generative_P = struct
       let init = U.fold ~prefix:(w "prior") ~init ~f prms.prior in
       let init = D.fold ~prefix:(w "dynamics") ~init ~f prms.dynamics in
       L.fold ~prefix:(w "likelihood") ~init ~f prms.likelihood
+  end
+end
+
+module Full_P = struct
+  type ('a, 'b, 'c, 'd) prm_ =
+    { generative : ('a, 'b, 'c) Generative_P.prm
+    ; readout : 'd Readout_P.prm
+    }
+  [@@deriving accessors ~submodule:A]
+
+  module Make (U : Owl_parameters.T) (D : Owl_parameters.T) (L : Owl_parameters.T) =
+  struct
+    module G = Generative_P.Make (U) (D) (L)
+    module R = Readout_P
+
+    type 'a prm = ('a U.prm, 'a D.prm, 'a L.prm, 'a) prm_
+
+    let map ~f prms =
+      { generative = G.map ~f prms.generative; readout = R.map ~f prms.readout }
+
+
+    let fold ?prefix ~init ~f prms =
+      let w = with_prefix ?prefix in
+      R.fold ~prefix:(w "readout") ~init ~f prms.readout
+      |> fun init -> G.fold ~prefix:(w "generative") ~init ~f prms.generative
   end
 end

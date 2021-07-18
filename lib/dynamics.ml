@@ -4,8 +4,8 @@ include Dynamics_typ
 module AD = Algodiff.D
 
 module Integrate (D : Dynamics_T) = struct
-  let integrate ~prms ~task =
-    let dyn_k = D.dyn ~task ~theta:prms in
+  let integrate ~readout ~prms ~task =
+    let dyn_k = D.dyn ~readout ~task ~theta:prms in
     fun ~n ~u ->
       (* u is a TxN matrix, giving T+1 timesteps,
          but actually the first one is going to give x0 *)
@@ -37,13 +37,13 @@ module Arm_Linear = struct
     AD.Linalg.inv (M.inertia st)
 
 
-  let ms ~prms ~x =
+  let ms ~readout ~prms:_ ~x =
     let open AD.Maths in
     let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
     let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
     let st = Arm.pack_state thetas in
     let s = Arm.pack_state thetas in
-    let c = Owl_parameters.extract prms.c in
+    let c = readout in
     let tau = AD.Maths.(c *@ transpose xs) |> AD.Maths.transpose in
     let dotdot = M.theta_dot_dot s tau in
     let dotdot1, dotdot2 = AD.Mat.get dotdot 0 0, AD.Mat.get dotdot 1 0 in
@@ -73,9 +73,9 @@ module Arm_Linear = struct
     m12, m22
 
 
-  let dyn ~theta ~task =
+  let dyn ~readout ~theta ~task =
     let b = Owl_parameters.extract theta.b in
-    let c = Owl_parameters.extract theta.c in
+    let c = readout in
     let tau = task.tau in
     let a = Owl_parameters.extract theta.a in
     let a = AD.Maths.(a / AD.F tau) in
@@ -105,17 +105,17 @@ module Arm_Linear = struct
 
   let dyn_x =
     (* Marine to check this *)
-    let _dyn_x ~theta ~task =
+    let _dyn_x ~readout ~theta ~task =
       let tau = task.tau in
       let a = Owl_parameters.extract theta.a in
       let a = AD.Maths.(a / AD.F tau) in
       let at = AD.Maths.transpose a in
-      let ms = ms ~prms:theta in
+      let ms = ms ~readout ~prms:theta in
       let m = AD.Mat.row_num a in
       let n = m + 4 in
       let dt = task.dt in
       let _dt = AD.F dt in
-      let c = Owl_parameters.extract theta.c in
+      let c = readout in
       fun ~k:_ ~x ~u:_ ->
         let nminv = AD.Maths.(neg (minv ~x)) in
         let m21, m22 = ms ~x in
@@ -138,7 +138,7 @@ module Arm_Linear = struct
 
 
   let dyn_u =
-    let _dyn_u ~theta ~task =
+    let _dyn_u ~readout:_ ~theta ~task =
       let b = Owl_parameters.extract theta.b in
       let m = AD.Mat.col_num b in
       let dt = AD.F task.dt in
@@ -159,7 +159,7 @@ module Linear = struct
 
   let requires_linesearch = false
 
-  let dyn ~theta ~task =
+  let dyn ~readout:_ ~theta ~task =
     let b = Owl_parameters.extract theta.b in
     let tau = task.tau in
     let b = AD.Maths.(b / AD.F tau) in
@@ -174,7 +174,7 @@ module Linear = struct
 
   let dyn_x =
     (* Marine to check this *)
-    let _dyn_x ~theta ~task =
+    let _dyn_x ~readout:_ ~theta ~task =
       let tau = task.tau in
       let a = Owl_parameters.extract theta.a in
       let a = AD.Maths.(a / AD.F tau) in
@@ -187,7 +187,7 @@ module Linear = struct
 
 
   let dyn_u =
-    let _dyn_u ~theta ~task =
+    let _dyn_u ~readout:_ ~theta ~task =
       let b = Owl_parameters.extract theta.b in
       let dt = AD.F task.dt in
       let tau = task.tau in
@@ -217,13 +217,13 @@ struct
     AD.Linalg.inv (M.inertia st)
 
 
-  let ms ~prms ~x =
+  let ms ~readout ~prms:_ ~x =
     let open AD.Maths in
     let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
     let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
     let st = Arm.pack_state thetas in
     let s = Arm.pack_state thetas in
-    let c = Owl_parameters.extract prms.c in
+    let c = readout in
     let tau = AD.Maths.(c *@ transpose (phi_x xs)) |> AD.Maths.transpose in
     let dotdot = M.theta_dot_dot s tau in
     let dotdot1, dotdot2 = AD.Mat.get dotdot 0 0, AD.Mat.get dotdot 1 0 in
@@ -253,9 +253,9 @@ struct
     m12, m22
 
 
-  let dyn ~theta ~task =
+  let dyn ~readout ~theta ~task =
     let b = Owl_parameters.extract theta.b in
-    let c = Owl_parameters.extract theta.c in
+    let c = readout in
     let tau = task.tau in
     let a = Owl_parameters.extract theta.a in
     let a = AD.Maths.(a / AD.F tau) in
@@ -285,17 +285,17 @@ struct
 
   let dyn_x =
     (* Marine to check this *)
-    let _dyn_x ~theta ~task =
+    let _dyn_x ~readout ~theta ~task =
       let tau = task.tau in
       let a = Owl_parameters.extract theta.a in
       let a = AD.Maths.(a / AD.F tau) in
       let at = AD.Maths.transpose a in
-      let ms = ms ~prms:theta in
+      let ms = ms ~readout ~prms:theta in
       let m = AD.Mat.row_num a in
       let n = m + 4 in
       let dt = task.dt in
       let _dt = AD.F dt in
-      let c = Owl_parameters.extract theta.c in
+      let c = readout in
       fun ~k:_ ~x ~u:_ ->
         let nminv = AD.Maths.(neg (minv ~x)) in
         let m21, m22 = ms ~x in
@@ -323,7 +323,7 @@ struct
 
 
   let dyn_u =
-    let _dyn_u ~theta ~task =
+    let _dyn_u ~readout:_ ~theta ~task =
       let b = Owl_parameters.extract theta.b in
       let m = AD.Mat.col_num b in
       let dt = AD.F task.dt in

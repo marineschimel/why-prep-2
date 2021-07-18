@@ -1,5 +1,15 @@
 (executables
- (names run_soc run_sparse_soc run_soc_noises costs run_soft_soc)
- (libraries owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
+ (names
+  run_soc
+  hierarchical
+  construct
+  run_sparse_soc
+  run_soc_noises
+  costs
+  run_soft_soc
+  run_log_barrier
+  diff_c
+  double)
+ (libraries accessor adam owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))

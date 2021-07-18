@@ -1,16 +1,39 @@
 open Base
 open Owl_parameters
 include Model_typ
+include Readout_typ
 
 module type Likelihood_T = sig
   module P : Owl_parameters.T
-  open P
 
   val requires_linesearch : bool
   val label : string
-  val neg_logp_t : prms:p -> task:task -> k:int -> z_t:AD.t -> AD.t
-  val neg_jac_t : (prms:p -> task:task -> k:int -> z_t:AD.t -> AD.t) option
-  val neg_hess_t : (prms:p -> task:task -> k:int -> z_t:AD.t -> AD.t) option
+
+  val neg_logp_t
+    :  readout:AD.t
+    -> prms:AD.t Owl_parameters.tag P.prm
+    -> task:task
+    -> k:int
+    -> z_t:AD.t
+    -> AD.t
+
+  val neg_jac_t
+    : (readout:AD.t
+       -> prms:AD.t Owl_parameters.tag P.prm
+       -> task:task
+       -> k:int
+       -> z_t:AD.t
+       -> AD.t)
+      option
+
+  val neg_hess_t
+    : (readout:AD.t
+       -> prms:AD.t Owl_parameters.tag P.prm
+       -> task:task
+       -> k:int
+       -> z_t:AD.t
+       -> AD.t)
+      option
 end
 
 module End_P = struct

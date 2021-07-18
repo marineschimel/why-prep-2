@@ -3,6 +3,7 @@ module AD = Algodiff.D
 module M = Arm.Make (Arm.Defaults)
 open Lib
 open Base
+open Accessor.O
 
 (* Setting up the parameters/directories
 *)
@@ -13,20 +14,19 @@ let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let targets = Mat.load_txt (Printf.sprintf "%s/target_thetas" data_dir)
 let target i = Mat.row targets i
 let dt = 1E-3
-let lambda_prep = 1E-6
-let lambda_mov = 1E-6
+let lambda_prep = 1E-4
+let lambda_mov = 1E-4
 let n_out = 2
-let n = 204
+let _n = 204
 let m = 200
 let tau = 150E-3
 let n_output = 2
 let n_targets = 8
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-let t_prep = 0.3
+let t_prep = 0.
 let target_num = 0
-
-(* let c = Mat.gaussian ~sigma:0.1 n_out m
-let _ = Mat.save_txt ~out:(in_data_dir "c") c *)
+let c = Mat.gaussian ~sigma:0.5 n_out m
+let _ = Mat.save_txt ~out:(in_data_dir "c") c
 
 (*structure : get inputs from task, then from the same SOC just generating inputs, 
 then from yet another SOC
@@ -36,7 +36,7 @@ what about one population receiving modulated inputs about the target?
 
 let task =
   Model.
-    { t_prep = 0.3
+    { t_prep = 0.
     ; t_mov = 0.4
     ; dt
     ; t_hold = Some 0.2
@@ -130,21 +130,51 @@ let prms1 =
 module I0 = Model.ILQR (U) (D0) (L0)
 module I1 = Model.ILQR (U) (D1) (L1)
 
-let xs0, us0 = I0.solve ~arm:true ~n ~m ~prms:prms0 task
+let xs0, us0 = I0.solve ~arm:true ~n:_n ~m ~prms:prms0 task
 
 let _ =
-  Mat.save_txt ~out:(Printf.sprintf "us_0") (AD.unpack_arr us0);
-  Mat.save_txt ~out:(Printf.sprintf "xs_0") (AD.unpack_arr xs0)
+  Mat.save_txt ~out:(Printf.sprintf "w_noprep/us_0") (AD.unpack_arr us0);
+  Mat.save_txt ~out:(Printf.sprintf "w_noprep/xs_0") (AD.unpack_arr xs0)
 
 
 let n = 200
 
-let _ =
+(* let _ =
   let rec hier k us =
     let task_next = Model.{ task with target = us } in
     let xs, next_us = I1.solve ~arm:false ~n ~m ~prms:prms1 task_next in
-    let _ = Mat.save_txt ~out:(Printf.sprintf "us_%i" (k + 1)) (AD.unpack_arr next_us) in
-    let _ = Mat.save_txt ~out:(Printf.sprintf "xs_%i" (k + 1)) (AD.unpack_arr xs) in
-    if k = 10 then next_us else hier (k + 1) next_us
+    let _ =
+      Mat.save_txt ~out:(Printf.sprintf "w_noprep/us_%i" (k + 1)) (AD.unpack_arr next_us)
+    in
+    let _ =
+      Mat.save_txt ~out:(Printf.sprintf "w_noprep/xs_%i" (k + 1)) (AD.unpack_arr xs)
+    in
+    if k = 7 then next_us else hier (k + 1) next_us
+  in
+  hier 0 us0 *)
+
+let _ =
+  let rec hier k us =
+    let task_next = Model.{ task with target = us } in
+    let prms =
+      Accessor.set
+        (Model.Generative_P.A.dynamics @> Dynamics.Linear_P.A.a)
+        prms1
+        ~to_:
+          (Owl_parameters.pinned
+             (AD.pack_arr
+                (Mat.transpose
+                   Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir k) - eye m))))
+    in
+    let xs, next_us = I1.solve ~arm:false ~n ~m ~prms task_next in
+    let _ =
+      Mat.save_txt
+        ~out:(Printf.sprintf "w_noprep/multi/us_%i" (k + 1))
+        (AD.unpack_arr next_us)
+    in
+    let _ =
+      Mat.save_txt ~out:(Printf.sprintf "w_noprep/multi/xs_%i" (k + 1)) (AD.unpack_arr xs)
+    in
+    if k = 7 then next_us else hier (k + 1) next_us
   in
   hier 0 us0

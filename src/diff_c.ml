@@ -1,0 +1,150 @@
+open Owl
+module AD = Algodiff.D
+module M = Arm.Make (Arm.Defaults)
+open Lib
+open Base
+
+let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
+let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which data is]")
+let in_dir s = Printf.sprintf "%s/%s" dir s
+let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
+let targets = Mat.load_txt (Printf.sprintf "%s/target_thetas" data_dir)
+let target i = Mat.row targets i
+let t_prep = 0.3
+let dt = 1E-3
+let lambda_prep = 1E-6
+let lambda_mov = 1E-6
+let n_out = 2
+let n = 24
+let m = 20
+let tau = 150E-3
+let n_output = 2
+let n_targets = 1
+let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
+let t_preps = [| 0. |]
+
+(*; 0.01; 0.02; 0.05; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.8; 1.*)
+let c = Mat.gaussian ~sigma:0.1 n_out m
+let _ = C.root_perform (fun () -> Mat.save_txt ~out:(in_data_dir "c") c)
+
+let tasks =
+  Array.init
+    (Array.length t_preps * n_targets)
+    ~f:(fun i ->
+      let n_time = i / n_targets in
+      let n_target = Int.rem i n_targets in
+      Model.
+        { t_prep = t_preps.(n_time)
+        ; t_mov = 0.4
+        ; dt
+        ; t_hold = Some 0.2
+        ; scale_lambda = None
+        ; target = AD.pack_arr (target n_target)
+        ; t_pauses = None
+        ; theta0
+        ; tau = 150E-3
+        })
+
+
+let save_results suffix xs us =
+  let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
+  let thetas, xs, us =
+    ( Mat.get_slice [ []; [ 0; 3 ] ] (AD.unpack_arr xs)
+    , Mat.get_slice [ []; [ 4; -1 ] ] (AD.unpack_arr xs)
+    , AD.unpack_arr us )
+  in
+  Owl.Mat.save_txt ~out:(file "thetas") thetas;
+  Owl.Mat.save_txt ~out:(file "xs") xs;
+  Owl.Mat.save_txt ~out:(file "us") us
+
+
+let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
+let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
+
+module U = Priors.Gaussian
+
+module D = Dynamics.Arm_Plus (struct
+  let phi_x x = x
+  let d_phi_x _ = AD.Mat.eye 20
+  let phi_u x = AD.Maths.relu x
+  let d_phi_u _ = AD.Mat.ones 1 20
+end)
+
+module R = Readout
+
+module L = Likelihoods.End (struct
+  let label = "output"
+end)
+
+let prms =
+  let open Owl_parameters in
+  C.broadcast' (fun () ->
+      let likelihood =
+        Likelihoods.End_P.
+          { c =
+              (learned : setter)
+                (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
+          ; c_mask = None
+          ; qs_coeff = (pinned : setter) (AD.F 1.)
+          ; t_coeff = (pinned : setter) (AD.F 0.5)
+          ; g_coeff = (pinned : setter) (AD.F 1.)
+          }
+      in
+      let dynamics =
+        Dynamics.Arm_Plus_P.
+          { a =
+              (pinned : setter) AD.Maths.(AD.Mat.gaussian ~sigma:0.04 m m - AD.Mat.eye m)
+          ; b = (pinned : setter) (AD.Mat.eye m)
+          }
+      in
+      let prior =
+        Priors.Gaussian_P.
+          { lambda_prep = (pinned : setter) (AD.F lambda_prep)
+          ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
+          }
+      in
+      let readout =
+        R.Readout_P.
+          { c =
+              (learned : setter)
+                (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/c" data_dir)))
+          }
+      in
+      let generative = Model.Generative_P.{ prior; dynamics; likelihood } in
+      Model.Full_P.{ generative; readout })
+
+
+module I = Model.ILQR (U) (D) (L)
+
+let _ =
+  let _ = save_prms "" prms in
+  Array.mapi tasks ~f:(fun i t ->
+      if Int.(i % C.n_nodes = C.rank)
+      then (
+        let n_target = Int.rem i n_targets in
+        let t_prep = Float.to_int (1000. *. t.t_prep) in
+        let xs, us, _ = I.solve ~n ~m ~prms t in
+        save_results (Printf.sprintf "%i_%i" n_target t_prep) xs us;
+        save_task (Printf.sprintf "%i_%i" n_target t_prep) t))
+
+
+let loss ~u_init ~prms t =
+  let _, us, l =
+    match u_init with
+    | Some u -> I.solve ~u_init:u ~n ~m ~prms t
+    | None -> I.solve ~n ~m ~prms t
+  in
+  l, AD.unpack_arr us
+
+
+let final_prms =
+  I.train
+    ~max_iter:100
+    ~loss
+    ~init_prms:prms
+    tasks
+    ~save_progress_to:(10, 10, in_dir "progress")
+
+
+let _ =
+  Mat.save_txt ~out:"c_test" (AD.unpack_arr (Owl_parameters.extract final_prms.readout.c))

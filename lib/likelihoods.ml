@@ -13,27 +13,20 @@ struct
   let requires_linesearch = false
   let label = X.label
 
-  let unpack_c ~prms =
-    let c = Owl_parameters.extract prms.c in
-    match prms.c_mask with
-    | None -> c
-    | Some cm -> AD.Maths.(c * cm)
-
-
-  let neg_logp_t ~prms ~task =
+  let neg_logp_t ~readout ~prms ~task =
     let t_prep = task.t_prep in
     let target_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.target in
     let theta0 = task.theta0 in
-    let qs_coeff = Owl_parameters.extract prms.qs_coeff in
-    let g_coeff = Owl_parameters.extract prms.g_coeff in
-    let t_coeff = Owl_parameters.extract prms.t_coeff in
+    let qs_coeff = Owl_parameters.extract prms.End_P.qs_coeff in
+    let g_coeff = Owl_parameters.extract prms.End_P.g_coeff in
+    let t_coeff = Owl_parameters.extract prms.End_P.t_coeff in
     let dt = task.dt in
     let n_prep = Float.to_int (t_prep /. dt) in
     let n_mov =
       let d_mov = Float.to_int (task.t_mov /. dt) in
       n_prep + d_mov
     in
-    let c = Owl_parameters.extract prms.c in
+    let c = readout in
     let c_t = AD.Maths.transpose c in
     fun ~k ~z_t ->
       let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] z_t in
@@ -56,7 +49,7 @@ struct
 
 
   let neg_jac_t =
-    let _neg_jac_t ~prms ~task =
+    let _neg_jac_t ~readout ~prms ~task =
       let t_prep = task.t_prep in
       let target_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.target in
       let theta0 = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.theta0 in
@@ -69,7 +62,7 @@ struct
         let d_mov = Float.to_int (task.t_mov /. dt) in
         n_prep + d_mov
       in
-      let c = Owl_parameters.extract prms.c in
+      let c = readout in
       let m = AD.Mat.col_num c in
       let c_t = AD.Maths.transpose c in
       fun ~k ~z_t ->
@@ -100,10 +93,9 @@ struct
 
 
   let neg_hess_t =
-    let _neg_hess_t ~prms ~task =
-      let c = unpack_c ~prms in
+    let _neg_hess_t ~readout ~prms ~task =
+      let c = readout in
       let m = AD.Mat.col_num c in
-      let c = Owl_parameters.extract prms.c in
       let t_prep = task.t_prep in
       let dt = task.dt in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
@@ -151,13 +143,6 @@ struct
   let requires_linesearch = false
   let label = X.label
 
-  let unpack_c ~prms =
-    let c = Owl_parameters.extract prms.c in
-    match prms.c_mask with
-    | None -> c
-    | Some cm -> AD.Maths.(c * cm)
-
-
   let start ~task t =
     let t_prep = AD.F task.t_prep in
     AD.Maths.(sigmoid ((t_prep - t) / F 2E-4))
@@ -168,14 +153,14 @@ struct
     AD.Maths.(sigmoid ((t - t_mov) / F 20E-3))
 
 
-  let neg_logp_t ~prms ~task =
+  let neg_logp_t ~readout ~prms ~task =
     let target_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.target in
     let theta0 = task.theta0 in
     let qs_coeff = Owl_parameters.extract prms.qs_coeff in
     let g_coeff = Owl_parameters.extract prms.g_coeff in
     let t_coeff = Owl_parameters.extract prms.t_coeff in
     let dt = task.dt in
-    let c = unpack_c ~prms in
+    let c = readout in
     let c_t = AD.Maths.transpose c in
     fun ~k ~z_t ->
       let t = AD.F Float.(of_int k *. dt) in
@@ -194,15 +179,14 @@ struct
 
 
   let neg_jac_t =
-    let _neg_jac_t ~prms ~task =
+    let _neg_jac_t ~readout ~prms ~task =
       let target_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.target in
       let theta0 = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.theta0 in
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
       let g_coeff = Owl_parameters.extract prms.g_coeff in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
       let dt = task.dt in
-      let c = unpack_c ~prms in
-      let c = AD.Maths.get_slice [ []; [ 4; -1 ] ] c in
+      let c = readout in
       let c_t = AD.Maths.transpose c in
       fun ~k ~z_t ->
         let t = AD.F Float.(of_int k *. dt) in
@@ -227,11 +211,9 @@ struct
 
 
   let neg_hess_t =
-    let _neg_hess_t ~prms ~task =
-      let c = unpack_c ~prms in
-      let n = AD.Mat.col_num c in
-      let c = AD.Maths.get_slice [ []; [ 4; -1 ] ] c in
-      let m = n - 4 in
+    let _neg_hess_t ~readout ~prms ~task =
+      let c = readout in
+      let m = AD.Mat.col_num c in
       let dt = task.dt in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
@@ -270,7 +252,7 @@ struct
   let requires_linesearch = false
   let label = X.label
 
-  let neg_logp_t ~prms ~task =
+  let neg_logp_t ~readout:_ ~prms ~task =
     let q_coeff = Owl_parameters.extract prms.q_coeff in
     let tgt = task.target in
     fun ~k ~z_t ->
@@ -279,7 +261,7 @@ struct
 
 
   let neg_jac_t =
-    let _neg_jac_t ~prms ~task =
+    let _neg_jac_t ~readout:_ ~prms ~task =
       let q_coeff = Owl_parameters.extract prms.q_coeff in
       let tgt = task.target in
       fun ~k ~z_t ->
@@ -290,7 +272,7 @@ struct
 
 
   let neg_hess_t =
-    let _neg_hess_t ~prms ~task =
+    let _neg_hess_t ~readout:_ ~prms ~task =
       let q_coeff = Owl_parameters.extract prms.q_coeff in
       let tgt = task.target in
       let n = AD.Mat.col_num tgt in
@@ -310,7 +292,7 @@ struct
   let requires_linesearch = true
   let label = X.label
 
-  let neg_logp_t ~prms ~task =
+  let neg_logp_t ~readout ~prms ~task =
     let n_prep = Float.to_int (task.t_prep /. task.dt) in
     let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
     let pause =
@@ -322,7 +304,7 @@ struct
     let qs_coeff = Owl_parameters.extract prms.qs_coeff in
     let g_coeff = Owl_parameters.extract prms.g_coeff in
     let t_coeff = Owl_parameters.extract prms.t_coeff in
-    let c = Owl_parameters.extract prms.c in
+    let c = readout in
     let c_t = AD.Maths.transpose c in
     let tgt1 =
       AD.Mat.row task.target 0 |> fun z -> AD.Maths.get_slice [ []; [ 0; 1 ] ] z
@@ -360,7 +342,7 @@ struct
 
 
   let neg_jac_t =
-    let _neg_jac_t ~prms ~task =
+    let _neg_jac_t ~readout ~prms ~task =
       let pause =
         match task.t_pauses with
         | Some t -> t.(0)
@@ -372,7 +354,7 @@ struct
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
       let g_coeff = Owl_parameters.extract prms.g_coeff in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
-      let c = Owl_parameters.extract prms.c in
+      let c = readout in
       let m = AD.Mat.col_num c in
       let c_t = AD.Maths.transpose c in
       let tgt1 =
@@ -416,7 +398,7 @@ struct
 
 
   let neg_hess_t =
-    let _neg_hess_t ~prms ~task =
+    let _neg_hess_t ~readout ~prms ~task =
       let pause =
         match task.t_pauses with
         | Some t -> t.(0)
@@ -428,7 +410,7 @@ struct
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
       let g_coeff = Owl_parameters.extract prms.g_coeff in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
-      let c = Owl_parameters.extract prms.c in
+      let c = readout in
       let dt = task.dt in
       let _dt = AD.F dt in
       let m = AD.Mat.col_num c in
