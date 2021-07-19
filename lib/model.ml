@@ -146,7 +146,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         let pct_change = Float.(abs (c -. !cprev) /. !cprev) in
         cprev := c;
         Stdio.printf "\n loss %f || pct_change %f || Iter %i \n%!" c pct_change k;
-        if single_run then k >= 0 else Float.(pct_change < 1E-2)
+        if single_run then k >= 0 else Float.(pct_change < 5E-3)
     in
     let us =
       match u_init with
@@ -175,7 +175,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
   let train
       ?max_iter
       ?(recycle_u = true)
-      ?in_each_iteration
       ?save_progress_to
       ?eta
       ~loss
@@ -183,7 +182,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       data
     =
     let n_trials = Array.length data in
-    assert (Int.(n_trials % C.n_nodes = 0));
     (* make sure all workers have the same data *)
     let data = C.broadcast data in
     (* make sure all workers have different random seeds *)
@@ -206,7 +204,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
               let open AD in
               let theta = make_reverse (Arr (Owl.Mat.copy theta)) (AD.tag ()) in
               let prms = F.unpack handle theta in
-              (* we sample parameters at the outer level of the ELBOBO *)
               let u_init = us_init.(i) in
               let loss, mu_u = loss ~u_init ~prms datai in
               if recycle_u then us_init.(i) <- Some mu_u;
@@ -219,10 +216,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       loss
     in
     let stop iter current_loss =
-      Option.iter in_each_iteration ~f:(fun do_this ->
-          let prms = F.unpack handle (AD.pack_arr theta) in
-          let u_init = Array.map us_init ~f:(fun _ -> None) in
-          do_this ~u_init ~prms iter);
       C.root_perform (fun () ->
           Stdio.printf "\r[%05i]%!" iter;
           Option.iter save_progress_to ~f:(fun (loss_every, prms_every, prefix) ->

@@ -25,7 +25,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) : sig
   val train
     :  ?max_iter:int
     -> ?recycle_u:bool
-    -> ?in_each_iteration:(u_init:'a option array -> prms:F.p -> int -> unit)
     -> ?save_progress_to:int * int * string
     -> ?eta:[ `constant of float | `of_iter of int -> float ]
     -> loss:(u_init:'b option -> prms:F.p -> 'c -> AD.t * 'b)
