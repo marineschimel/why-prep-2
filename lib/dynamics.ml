@@ -214,17 +214,18 @@ struct
   let minv ~x =
     let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
     let st = Arm.pack_state thetas in
-    AD.Linalg.inv (M.inertia st)
+    AD.Linalg.linsolve (M.inertia st) (AD.Mat.eye 2)
 
 
-  let ms ~readout ~prms:_ ~x =
+  let ms ~readout ~task ~prms:_ ~x =
     let open AD.Maths in
     let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
+    let x_init = task.x0 |> fun z -> AD.Maths.get_slice [ []; [ 4; -1 ] ] z in
     let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
     let st = Arm.pack_state thetas in
     let s = Arm.pack_state thetas in
     let c = readout in
-    let tau = AD.Maths.(c *@ transpose (phi_x xs)) |> AD.Maths.transpose in
+    let tau = AD.Maths.(c *@ transpose (phi_x xs - phi_x x_init)) |> AD.Maths.transpose in
     let dotdot = M.theta_dot_dot s tau in
     let dotdot1, dotdot2 = AD.Mat.get dotdot 0 0, AD.Mat.get dotdot 1 0 in
     let m12 =
@@ -256,10 +257,12 @@ struct
   let dyn ~readout ~theta ~task =
     let b = Owl_parameters.extract theta.b in
     let c = readout in
+    let bias = Owl_parameters.extract theta.bias in
     let tau = task.tau in
     let a = Owl_parameters.extract theta.a in
     let a = AD.Maths.(a / AD.F tau) in
     let b = AD.Maths.(b / AD.F tau) in
+    let x_init = task.x0 |> fun z -> AD.Maths.get_slice [ []; [ 4; -1 ] ] z in
     let dt = task.dt in
     let _dt = AD.F dt in
     fun ~k:_ ~x ~u ->
@@ -267,8 +270,17 @@ struct
       let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
       let xst = AD.Maths.transpose xs in
       let s = Arm.pack_state thetas in
-      let dx = AD.Maths.(((phi_x xs *@ a) + (phi_u u *@ b)) * _dt) in
-      let tau = AD.Maths.(c *@ xst) |> AD.Maths.transpose in
+      let dx =
+        AD.Maths.(((phi_x xs *@ a) - (xs / AD.F tau) + (phi_u (u + bias) *@ b)) * _dt)
+      in
+      let tau =
+        let r = AD.Maths.(phi_x xst - (F 0. * phi_x (transpose x_init))) in
+        AD.Maths.(c *@ r) |> AD.Maths.transpose
+      in
+      (*Mat.save_txt
+          ~out:
+            (Printf.sprintf "/rds/user/mmcs3/hpc-work/_results/why_prep/checks_2/s_%i" k)
+          (AD.unpack_arr (AD.Maths.of_arrays [| [| s.x1_dot; s.x2_dot; s.x1; s.x2 |] |])) *)
       let dotdot = M.theta_dot_dot s tau in
       let new_thetas =
         AD.Maths.(
@@ -289,7 +301,7 @@ struct
       let tau = task.tau in
       let a = Owl_parameters.extract theta.a in
       let a = AD.Maths.(a / AD.F tau) in
-      let at = AD.Maths.transpose a in
+      let _at = AD.Maths.transpose a in
       let ms = ms ~readout ~prms:theta in
       let m = AD.Mat.row_num a in
       let n = m + 4 in
@@ -297,8 +309,9 @@ struct
       let _dt = AD.F dt in
       let c = readout in
       fun ~k:_ ~x ~u:_ ->
+        let z x = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
         let nminv = AD.Maths.(neg (minv ~x)) in
-        let m21, m22 = ms ~x in
+        let m21, m22 = ms ~x ~task in
         let b1 =
           AD.Maths.concatenate
             ~axis:1
@@ -309,22 +322,26 @@ struct
               ~axis:1
               [| nminv *@ m21
                ; nminv *@ m22
-               ; neg AD.Maths.(nminv *@ c *@ transpose (d_phi_x x))
+               ; neg AD.Maths.(nminv *@ c *@ diagm (d_phi_x (z x)))
               |])
         and b3 =
           AD.Maths.concatenate
             ~axis:1
-            [| AD.Mat.zeros m 2; AD.Mat.zeros m 2; AD.Maths.(d_phi_x x *@ at) |]
+            [| AD.Mat.zeros m 2
+             ; AD.Mat.zeros m 2
+             ; AD.Maths.((d_phi_x (z x) *@ _at) - (AD.Mat.eye m / F tau))
+            |]
         in
         let mat = AD.Maths.(concatenate ~axis:0 [| b1; b2; b3 |]) in
         AD.Maths.((mat * _dt) + AD.Mat.eye n) |> AD.Maths.transpose
     in
-    Some _dyn_x
+    None
 
 
   let dyn_u =
     let _dyn_u ~readout:_ ~theta ~task =
       let b = Owl_parameters.extract theta.b in
+      let bias = Owl_parameters.extract theta.bias in
       let m = AD.Mat.col_num b in
       let dt = AD.F task.dt in
       let tau = task.tau in
@@ -333,9 +350,9 @@ struct
         let mat =
           AD.Maths.concatenate
             ~axis:0
-            [| AD.Mat.zeros 2 m; AD.Mat.zeros 2 m; AD.Maths.(d_phi_u u *@ b) |]
+            [| AD.Mat.zeros 2 m; AD.Mat.zeros 2 m; AD.Maths.(d_phi_u (u + bias) *@ b) |]
         in
-        AD.Maths.(mat * dt)
+        AD.Maths.(transpose (mat * dt))
     in
-    None
+    Some _dyn_u
 end

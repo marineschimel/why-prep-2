@@ -16,7 +16,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
   let linesearch = U.requires_linesearch || D.requires_linesearch || L.requires_linesearch
 
   (* n : dimensionality of state space; m : input dimension *)
-  let solve ?(arm = true) ?u_init ?(single_run = false) ~n ~m ~prms task =
+  let solve ?save ?u_init ?(single_run = false) ?(opt = false) ~n ~m ~x0 ~prms task =
     let open Full_P in
     let module M = struct
       type theta = F.p
@@ -132,11 +132,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       let final_loss = final_cost
     end
     in
-    let x0 =
-      if arm
-      then AD.Maths.concatenate ~axis:1 [| task.theta0; AD.Mat.zeros 1 m |]
-      else AD.Mat.zeros 1 m
-    in
     let module IP = Dilqr.Default.Make (M) in
     let stop_ilqr loss ~prms =
       let x0, theta = x0, prms in
@@ -146,7 +141,22 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         let pct_change = Float.(abs (c -. !cprev) /. !cprev) in
         cprev := c;
         Stdio.printf "\n loss %f || pct_change %f || Iter %i \n%!" c pct_change k;
-        if single_run then k >= 0 else Float.(pct_change < 5E-3)
+        (* Mat.save_txt
+          ~out:
+            (Printf.sprintf
+               "/rds/user/mmcs3/hpc-work/_results/why_prep/baseline_11/us_%i"
+               k)
+          (AD.unpack_arr (AD.Maths.concatenate ~axis:0 (Array.of_list us))); *)
+        let _ =
+          match save with
+          | None -> ()
+          | Some f -> if k % 10 = 0 then f us
+        in
+        if single_run
+        then k >= 0
+        else if opt
+        then k > 10 || Float.(pct_change < 1E-3)
+        else (k > 10 && Float.(pct_change < 2E-4)) || k > 100
     in
     let us =
       match u_init with
@@ -167,8 +177,8 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
     , IP.differentiable_loss ~theta:prms tau )
 
 
-  let run ~ustars ~n ~m ~prms task =
-    let a, b, _ = solve ~u_init:ustars ~single_run:true ~n ~m ~prms task in
+  let run ~ustars ~n ~m ~x0 ~prms task =
+    let a, b, _ = solve ~u_init:ustars ~single_run:true ~n ~m ~x0 ~prms task in
     a, b
 
 
@@ -177,6 +187,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       ?(recycle_u = true)
       ?save_progress_to
       ?eta
+      ?in_each_iteration
       ~loss
       ~init_prms
       data
@@ -194,6 +205,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
     let adam_loss theta gradient =
       Stdlib.Gc.full_major ();
       let theta = C.broadcast theta in
+      let _ = Stdio.printf "%i %i" (Arr.shape theta).(0) (Arr.shape theta).(1) in
       let loss, g =
         Array.foldi
           data
@@ -201,6 +213,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
           ~f:(fun i (accu_loss, accu_g) datai ->
             if Int.(i % C.n_nodes = C.rank)
             then (
+              let _ = Stdio.printf "Node %i \n" i in
               let open AD in
               let theta = make_reverse (Arr (Owl.Mat.copy theta)) (AD.tag ()) in
               let prms = F.unpack handle theta in
@@ -216,13 +229,17 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       loss
     in
     let stop iter current_loss =
+      Option.iter in_each_iteration ~f:(fun do_this ->
+          let theta = C.broadcast theta in
+          let prms = F.unpack handle (AD.pack_arr theta) in
+          do_this ~prms iter);
       C.root_perform (fun () ->
           Stdio.printf "\r[%05i]%!" iter;
           Option.iter save_progress_to ~f:(fun (loss_every, prms_every, prefix) ->
               let kk = Int.((iter - 1) / loss_every) in
               if Int.((iter - 1) % prms_every) = 0
               then (
-                let prefix = Printf.sprintf "%s_%i" prefix kk in
+                let prefix = Printf.sprintf "%s_%i" prefix iter in
                 let prms = F.unpack handle (AD.pack_arr theta) in
                 Misc.save_bin (prefix ^ ".params.bin") prms;
                 F.save_to_files ~prefix ~prms);

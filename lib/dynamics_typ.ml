@@ -18,12 +18,11 @@ end
 module Arm_Linear_P = struct
   type 'a prm =
     { a : 'a
-    ; b : 'a
-    ; c : 'a
+    ; b : 'a 
     }
   [@@deriving accessors ~submodule:A]
 
-  let map ~f x = { a = f x.a; b = f x.b; c = f x.c }
+  let map ~f x = { a = f x.a; b = f x.b }
 
   let fold ?prefix ~init ~f x =
     let init = f init (x.a, with_prefix ?prefix "a") in
@@ -48,10 +47,11 @@ module Arm_Plus_P = struct
   type 'a prm =
     { a : 'a
     ; b : 'a
+    ; bias : 'a
     }
   [@@deriving accessors ~submodule:A]
 
-  let map ~f x = { a = f x.a; b = f x.b }
+  let map ~f x = { a = f x.a; b = f x.b ; bias = f x.bias}
 
   let fold ?prefix ~init ~f x =
     let init = f init (x.a, with_prefix ?prefix "a") in

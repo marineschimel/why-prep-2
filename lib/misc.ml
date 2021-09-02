@@ -1,5 +1,7 @@
 open Owl
 module Z = Dense.Matrix.Z
+open Arm.Defaults 
+module M = Arm.Make(Arm.Defaults)
 
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir]")
 let in_dir s = Printf.sprintf "%s/%s" dir s
@@ -80,3 +82,16 @@ let transform a =
   in
   let v = reorder data [] |> Array.of_list |> Mat.concatenate ~axis:1 in
   Mat.(inv v *@ a *@ v), v
+
+
+  let pos_to_angles x y = 
+    let ct2 = Maths.((sqr x +. sqr y -. sqr _L1 -. sqr _L2) /. (2. *. _L1 *. _L2)) in
+    let st2 = Maths.(sqrt (1. -. sqr ct2)) in
+    let t2 = Maths.acos ct2 in
+    let alpha = (_L1 +. (_L2 *. ct2)) /. (_L2 *. st2)
+    and bet = _L2 *. st2
+    and g = Maths.(neg (_L1 +. (_L2 *. ct2))) in
+    let st1 = (x -. (alpha *. y)) /. ((alpha *. g) -. bet) in
+    let ct1 = Maths.(sqrt (1. -. sqr st1)) in
+    let t1 = Maths.atan (st1 /. ct1) in
+    t1, t2

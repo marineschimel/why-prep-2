@@ -1,15 +1,18 @@
 (executables
  (names
   run_soc
-  hierarchical
-  construct
-  run_sparse_soc
   run_soc_noises
+  gather_arm
+  opt_multiscale
+  run_baseline
+  run_arm
+  run_fast
   costs
   run_soft_soc
   run_log_barrier
   diff_c
-  double)
+  qtuu
+  run_soft_relu)
  (libraries accessor adam owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))
