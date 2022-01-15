@@ -1,4 +1,5 @@
 open Base
+open Owl
 include Priors_typ
 include Model_typ
 
@@ -104,7 +105,7 @@ module Sparse = struct
     { lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
 
 
-  let alpha = AD.F 3000.
+  let alpha = AD.F 200.
 
   (* returns a column vector *)
 
@@ -244,4 +245,102 @@ struct
         AD.Maths.(lam * (t1 + t2))
     in
     Some _hess_t
+end
+
+module Student = struct
+  module P = Owl_parameters.Make (Student_P)
+  open Student_P
+
+  let requires_linesearch = true
+
+  let init
+      ?(pin_std = false)
+      ?(spatial_std = 1.)
+      ?(nu = 10.)
+      ~m
+      (set : Owl_parameters.setter)
+    =
+    let spatial_stds = Owl.Mat.create 1 m spatial_std in
+    { spatial_stds =
+        (if pin_std then Owl_parameters.pinned else set)
+          ~above:1E-3
+          (AD.pack_arr spatial_stds)
+    ; nu = set ~above:2.0 (AD.F nu)
+    }
+
+
+  let spatial_stds ~prms = Owl_parameters.extract prms.spatial_stds
+  let kl_to_gaussian = `sampling_based
+
+  let get_eff_prms ~prms =
+    let s = Owl_parameters.extract prms.spatial_stds in
+    let nu = Owl_parameters.extract prms.nu in
+    let sigma = AD.Maths.(sqrt ((nu - F 2.) / nu) * s) in
+    nu, sigma
+
+
+  let neg_logp_t ~prms ~task:_ =
+    let nu, sigma = get_eff_prms ~prms in
+    let m = AD.Mat.numel sigma in
+    let m_half = AD.F Float.(of_int m / 2.) in
+    let nu_half = AD.Maths.(F 0.5 * nu) in
+    let nu_plus_m_half = AD.Maths.(F 0.5 * (nu + F Float.(of_int m))) in
+    let cst0 = Float.(of_int m * log Owl.Const.pi2) in
+    let cst =
+      let cst1 =
+        AD.F
+          (Owl.Maths.loggamma (AD.unpack_flt nu_half)
+          -. Owl.Maths.loggamma (AD.unpack_flt nu_plus_m_half))
+      in
+      let cst2 = AD.Maths.(m_half * log (F Const.pi * nu)) in
+      let cst3 = AD.Maths.(sum' (log sigma)) in
+      AD.Maths.(cst1 + cst2 + cst3)
+    in
+    fun ~k:_ ~x:_ ~u ->
+      let stu =
+        let utilde = AD.Maths.(u / sigma) in
+        AD.Maths.(
+          (F 0. * cst) + (nu_plus_m_half * log (F 1. + (l2norm_sqr' utilde / nu))))
+      in
+      stu
+
+
+  let neg_jac_t =
+    let jac_t ~prms ~task:_ =
+      let nu, sigma = get_eff_prms ~prms in
+      let m = AD.Mat.numel sigma in
+      let nu_plus_m_half = AD.Maths.(F 0.5 * (nu + F Float.(of_int m))) in
+      let sigma2 = AD.Maths.sqr sigma in
+      fun ~k:_ ~x:_ ~u ->
+        let stu =
+          let tmp =
+            let utilde = AD.Maths.(u / sigma) in
+            AD.Maths.(F 1. + (l2norm_sqr' utilde / nu))
+          in
+          let tmp' = AD.Maths.(F 2. * u / sigma2 / nu) in
+          AD.Maths.(nu_plus_m_half * tmp' / tmp)
+        in
+        stu
+    in
+    Some jac_t
+
+
+  let neg_hess_t =
+    let hess_t ~prms ~task:_ =
+      let nu, sigma = get_eff_prms ~prms in
+      let m = AD.Mat.numel sigma in
+      let nu_plus_m_half = AD.Maths.(F 0.5 * (nu + F Float.(of_int m))) in
+      let sigma2 = AD.Maths.sqr sigma in
+      fun ~k:_ ~x:_ ~u ->
+        let stu =
+          let u_over_s = AD.Maths.(u / sigma) in
+          let tau = AD.Maths.(F 1. + (l2norm_sqr' u_over_s / nu)) in
+          let cst = AD.Maths.(F 2. * nu_plus_m_half / nu / sqr tau) in
+          let term1 = AD.Maths.(diagm (tau / sigma2)) in
+          let term2 = AD.Maths.(F 2. * (transpose u_over_s *@ u_over_s) / nu) in
+          AD.Maths.(cst * (term1 - term2))
+        in
+        stu
+    in
+    Some hess_t
 end

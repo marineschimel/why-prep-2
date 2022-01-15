@@ -8,6 +8,12 @@ let numel x = if is_float x then 1 else numel x
 let unpack_fun f x = unpack_arr (f (pack_arr x))
 let pack_fun f x = pack_arr (f (unpack_arr x))
 
+module Mat = struct
+  include Mat
+
+  let create n m x = pack_arr (Owl.Mat.create n m x)
+end
+
 let print_shape ~label x =
   x
   |> shape
@@ -124,8 +130,8 @@ and _loggamma =
          let df _cp ap at = Maths.(at * F (Owl_maths_special.psi (unpack_flt ap)))
          let dr a _cp ca = Maths.(!ca * F (Owl_maths_special.psi (unpack_flt a)))
        end : Siso))
-       
-       (* open Base
+
+(* open Base
 include Owl.Algodiff.D
 
 type my_float = float

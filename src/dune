@@ -1,17 +1,22 @@
 (executables
  (names
   run_soc
+  run_sparse_soc
+  run_double
+  double_analysis
+  prep_analysis
   run_soc_noises
   gather_arm
+  check_grads
   opt_multiscale
   run_baseline
   run_arm
   run_fast
   costs
   run_soft_soc
+  test_priors
   run_log_barrier
   diff_c
-  qtuu
   run_soft_relu)
  (libraries accessor adam owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess

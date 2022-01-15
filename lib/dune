@@ -14,4 +14,27 @@
   comm
   dilqr)
  (preprocess
-  (pps ppx-owl-opt ppx_accessor)))
+  (pps ppx_accessor)))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))
+
+; (library
+;  (name lib)
+;  (libraries
+;   adam
+;   owl
+;   cmdargs
+;   lbfgs
+;   owl-ode
+;   owl-opt-lbfgs
+;   arm
+;   owl-parameters
+;   base
+;   accessor
+;   comm
+;   dilqr)
+;  (preprocess
+;   (pps ppx-owl-opt ppx_accessor)))

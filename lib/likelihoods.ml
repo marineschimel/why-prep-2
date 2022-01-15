@@ -299,9 +299,13 @@ struct
     let n_prep = Float.to_int (t_prep /. dt) in
     let c = readout in
     let tgt = task.target in
+    let n_mov =
+      let d_mov = Float.to_int (task.t_mov /. dt) in
+      n_prep + d_mov
+    in
     let ct = AD.Maths.transpose c in
     fun ~k ~z_t ->
-      if k < n_prep
+      if k < n_prep || k > n_mov
       then (
         let mu_t = AD.Maths.(z_t *@ ct) in
         AD.Maths.(F 0.5 * F 10. * q_coeff * l2norm_sqr' mu_t))
@@ -319,12 +323,14 @@ struct
       let ct = AD.Maths.transpose c in
       let dt = task.dt in
       let n_prep = Float.to_int (task.t_prep /. dt) in
+      let n_mov =
+        let d_mov = Float.to_int (task.t_mov /. dt) in
+        n_prep + d_mov
+      in
       fun ~k ~z_t ->
-        let mu_t = AD.Maths.(z_t *@ ct) in 
-        if k < n_prep
-        then (
- 
-          AD.Maths.(F 10. * q_coeff * mu_t *@ c))
+        let mu_t = AD.Maths.(z_t *@ ct) in
+        if k < n_prep || k > n_mov
+        then AD.Maths.(F 10. * q_coeff * mu_t *@ c)
         else (
           let target_k = AD.Maths.get_slice [ [ k - n_prep ]; [] ] tgt in
           AD.Maths.(q_coeff * (mu_t - target_k) *@ c))
@@ -339,14 +345,21 @@ struct
       let dt = task.dt in
       let n_prep = Float.to_int (t_prep /. dt) in
       let c = readout in
+      let n_mov =
+        let d_mov = Float.to_int (task.t_mov /. dt) in
+        n_prep + d_mov
+      in
       let mat = AD.Maths.(q_coeff * transpose c *@ c) in
-      fun ~k ~z_t:_ -> if k < n_prep then AD.Maths.(F 10. * mat) else mat
+      fun ~k ~z_t:_ -> if k < n_prep || k > n_mov then AD.Maths.(F 10. * mat) else mat
     in
     Some _neg_hess_t
 end
 
 module Successive (X : sig
   val label : string
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val d2_phi_x : AD.t -> AD.t
 end) =
 struct
   module P = Owl_parameters.Make (Successive_P)
@@ -358,12 +371,13 @@ struct
   let neg_logp_t ~readout ~prms ~task =
     let n_prep = Float.to_int (task.t_prep /. task.dt) in
     let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
-    let pause =
+    let pause_0 =
       match task.t_pauses with
       | Some t -> t.(0)
       | None -> 0.
     in
-    let n_2 = n_1 + Float.to_int ((pause +. task.t_mov) /. task.dt) in
+    let n_2 = n_1 + Float.to_int (pause_0 /. task.dt) in
+    let n_3 = n_2 + Float.to_int (task.t_mov /. task.dt) in
     let qs_coeff = Owl_parameters.extract prms.qs_coeff in
     let g_coeff = Owl_parameters.extract prms.g_coeff in
     let t_coeff = Owl_parameters.extract prms.t_coeff in
@@ -383,6 +397,7 @@ struct
       let theta_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] thetas in
       let theta_vel = AD.Maths.get_slice [ []; [ 2; 3 ] ] thetas in
       let x_t = AD.Maths.get_slice [ []; [ 4; -1 ] ] z_t in
+      let x_t = AD.Maths.(X.phi_x x_t) in
       if k < n_prep
       then (
         let mu_t = AD.Maths.(x_t *@ c_t) in
@@ -395,7 +410,7 @@ struct
           F 0.5
           * g_coeff
           * (l2norm_sqr' (theta_pos - tgt1) + (F 0.1 * l2norm_sqr' theta_vel)))
-      else if k > n_2
+      else if k > n_3
       then
         AD.Maths.(
           F 0.5
@@ -406,14 +421,15 @@ struct
 
   let neg_jac_t =
     let _neg_jac_t ~readout ~prms ~task =
-      let pause =
+      let n_prep = Float.to_int (task.t_prep /. task.dt) in
+      let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
+      let pause_0 =
         match task.t_pauses with
         | Some t -> t.(0)
         | None -> 0.
       in
-      let n_prep = Float.to_int (task.t_prep /. task.dt) in
-      let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
-      let n_2 = n_1 + Float.to_int ((pause +. task.t_mov) /. task.dt) in
+      let n_2 = n_1 + Float.to_int (pause_0 /. task.dt) in
+      let n_3 = n_2 + Float.to_int (task.t_mov /. task.dt) in
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
       let g_coeff = Owl_parameters.extract prms.g_coeff in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
@@ -428,21 +444,25 @@ struct
       in
       let dt = task.dt in
       let _dt = AD.F dt in
-      let theta0 = task.theta0 in
+      let theta0 = task.theta0 |> AD.Maths.get_slice [ []; [ 0; 1 ] ] in
       fun ~k ~z_t ->
         let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] z_t in
         let theta_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] thetas in
         let theta_vel = AD.Maths.get_slice [ []; [ 2; 3 ] ] thetas in
         let x = AD.Maths.get_slice [ []; [ 4; -1 ] ] z_t in
+        let x_t = X.phi_x x in
+        let dphi = AD.Maths.(diagm (X.d_phi_x x)) in
         let r_state =
-          if k < n_prep then AD.Maths.(t_coeff * x *@ c_t *@ c) else AD.Mat.zeros 1 m
+          if k < n_prep
+          then AD.Maths.(t_coeff * x_t *@ c_t *@ c *@ dphi)
+          else AD.Mat.zeros 1 m
         in
         let r_xp =
           if k < n_prep
           then AD.Maths.(qs_coeff * (theta_pos - theta0))
           else if k > n_1 && k < n_2
           then AD.Maths.(g_coeff * (theta_pos - tgt1))
-          else if k > n_2
+          else if k > n_3
           then AD.Maths.(g_coeff * (theta_pos - tgt2))
           else AD.Mat.zeros 1 2
         in
@@ -451,7 +471,7 @@ struct
           then AD.Maths.(qs_coeff * theta_vel)
           else if k > n_1 && k < n_2
           then AD.Maths.(F 0.1 * g_coeff * theta_vel)
-          else if k > n_2
+          else if k > n_3
           then AD.Maths.(F 0.1 * g_coeff * theta_vel)
           else AD.Mat.zeros 1 2
         in
@@ -462,14 +482,15 @@ struct
 
   let neg_hess_t =
     let _neg_hess_t ~readout ~prms ~task =
-      let pause =
+      let n_prep = Float.to_int (task.t_prep /. task.dt) in
+      let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
+      let pause_0 =
         match task.t_pauses with
         | Some t -> t.(0)
         | None -> 0.
       in
-      let n_prep = Float.to_int (task.t_prep /. task.dt) in
-      let n_1 = Float.to_int ((task.t_mov +. task.t_prep) /. task.dt) in
-      let n_2 = n_1 + Float.to_int ((pause +. task.t_mov) /. task.dt) in
+      let n_2 = n_1 + Float.to_int (pause_0 /. task.dt) in
+      let n_3 = n_2 + Float.to_int (task.t_mov /. task.dt) in
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
       let g_coeff = Owl_parameters.extract prms.g_coeff in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
@@ -477,14 +498,19 @@ struct
       let dt = task.dt in
       let _dt = AD.F dt in
       let m = AD.Mat.col_num c in
-      let c_term = AD.Maths.(t_coeff * transpose c *@ c) in
-      fun ~k ~z_t:_ ->
+      fun ~k ~z_t ->
+        let x_t = AD.Maths.get_slice [ []; [ 4; -1 ] ] z_t in
+        let dx = AD.Maths.(diagm (X.d_phi_x x_t)) in
+        let ddx = X.d2_phi_x x_t in
+        let t1 = AD.Maths.(c *@ dx) in
+        let t2 = AD.Maths.(diagm (X.phi_x x_t) *@ transpose c *@ c *@ transpose ddx) in
+        let c_term = AD.Maths.((t_coeff * (transpose t1 *@ t1)) + t2) in
         let mu =
           if k < n_prep
           then AD.Maths.(qs_coeff * AD.Mat.eye 2)
           else if k > n_1 && k < n_2
           then AD.Maths.(g_coeff * AD.Mat.eye 2)
-          else if k > n_2
+          else if k > n_3
           then AD.Maths.(g_coeff * AD.Mat.eye 2)
           else AD.Mat.zeros 2 2
         in
@@ -493,7 +519,7 @@ struct
           then AD.Maths.(qs_coeff * AD.Mat.eye 2)
           else if k > n_1 && k < n_2
           then AD.Maths.(AD.F 0.1 * g_coeff * AD.Mat.eye 2)
-          else if k > n_2
+          else if k > n_3
           then AD.Maths.(AD.F 0.1 * g_coeff * AD.Mat.eye 2)
           else AD.Mat.zeros 2 2
         in

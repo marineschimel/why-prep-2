@@ -1,8 +1,9 @@
 open Owl
-module AD = Algodiff.D
 open Lib
 open Base
 open Accessor.O
+include Model_typ
+include Readout_typ
 
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let reuse = Cmdargs.(get_string "-reuse")
@@ -22,7 +23,7 @@ let g t1 t2 kernel =
   Mat.(concat_vh [| [| gg; gg' |]; [| neg gg'; neg g'g' |] |])
 
 
-let norm_c0 = AD.F 1.
+let norm_c0 = AD.F 5.
 
 let samples kernel =
   let t_max = 0.5 in
@@ -142,9 +143,7 @@ let init_prms =
       in
       let dynamics =
         Dynamics.Linear_P.
-          { a = (learned : setter) (AD.Mat.zeros m m)
-          ; b = (pinned : setter) (AD.Mat.eye m)
-          }
+          { a = (learned : setter) (AD.Mat.gaussian ~sigma:0.001 m m); b = (pinned : setter) (AD.Mat.eye m) }
       in
       let prior =
         Priors.Gaussian_P.
@@ -152,7 +151,7 @@ let init_prms =
           ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
           }
       in
-      let readout = R.Readout_P.{ c = (learned : setter) c } in
+      let readout = R.Readout_P.{ c = (pinned : setter) c } in
       let generative = Model.Generative_P.{ prior; dynamics; likelihood } in
       Model.Full_P.{ generative; readout })
 
@@ -165,10 +164,10 @@ let renorm_c c =
   let open Owl_parameters in
   let c = extract c in
   let norm_c = AD.Maths.l2norm' c in
-  (learned : setter) AD.Maths.(c / norm_c * norm_c0)
+  (pinned : setter) AD.Maths.(c / norm_c * norm_c0)
 
 
-let loss ~u_init ~prms t =
+let cost ~u_init ~prms t =
   let prms =
     C.broadcast
       (Accessor.map (Model.Full_P.A.readout @> Readout.Readout_P.A.c) prms ~f:renorm_c)
@@ -199,28 +198,56 @@ let save_results suffix prms tasks =
         Owl.Mat.save_txt ~out:(file "us") us))
 
 
-let final_prms =
-  let in_each_iteration ~prms k =
-    if Int.(k % 30 = 0) then save_results (in_dir "train") prms tasks;
-    if Int.(k % 30 = 0)
-    then (
-      let _ = C.print "testing..." in
-      save_results (in_dir "test") prms test_tasks;
-      if Int.(k % 10 = 0)
-      then
-        C.root_perform (fun () ->
-            let a = Owl_parameters.extract prms.generative.dynamics.a in
-            let eigs = Linalg.D.eigvals (AD.unpack_arr a) in
-            let er, ei = Dense.Matrix.Z.(re eigs, im eigs) in
-            Mat.(
-              save_txt ~out:(in_dir (Printf.sprintf "eigs_%i" k)) (transpose (er @= ei)))))
+let _ =
+  let a = Owl_parameters.extract init_prms.generative.dynamics.a in
+  let eigs = Linalg.D.eigvals (AD.unpack_arr a) in
+  let er, ei = Dense.Matrix.Z.(re eigs, im eigs) in
+  Mat.(save_txt ~out:(in_dir (Printf.sprintf "eigs")) (transpose (er @= ei)))
+
+
+let check_grad ~prms n_points file =
+  (* let seed = Random.int 31415 in
+  let u_init = Array.map data ~f:(fun _ -> `guess None) in *)
+  let module P = Owl_parameters.Make (Full_P.Make (U.P) (D.P) (L.P)) in
+  let module Packer = Owl_parameters.Packer () in
+  let handle = P.pack (module Packer) prms in
+  let theta, _, _ = Packer.finalize () in
+  let theta = AD.unpack_arr theta in
+  let loss, true_g =
+    let theta = AD.make_reverse (Arr (Mat.copy theta)) (AD.tag ()) in
+    let prms = P.unpack handle theta in
+    let loss, _ = cost ~u_init:None ~prms tasks.(0) in
+    AD.reverse_prop (F 1.) loss;
+    AD.unpack_flt loss, AD.(unpack_arr (adjval theta))
   in
-  I.train
-    ~max_iter:3000
-    ~loss
-    ~recycle_u:true
-    ~eta:(`of_iter (fun k -> Float.(0.01 / sqrt (of_int k /. 1.5))))
-    ~init_prms
-    ~in_each_iteration
-    ~save_progress_to:(1, 500, in_dir "progress")
-    tasks
+  let dim = Mat.numel theta in
+  let n_points =
+    match n_points with
+    | `all -> dim
+    | `random k -> k
+  in
+  Array.init dim ~f:(fun i -> i)
+  |> Stats.shuffle
+  |> Array.sub ~pos:0 ~len:n_points
+  |> Array.mapi ~f:(fun k id ->
+         Stdio.printf "\rcheck grad: %05i / %05i (out of %i)%!" (k + 1) n_points dim;
+         let true_g = Mat.get true_g 0 id in
+         let est_g =
+           let delta = 1E-2 in
+           let theta' = Mat.copy theta in
+           Mat.set theta' 0 id (Mat.get theta 0 id +. delta);
+           let loss' =
+             let l, _ =
+               cost ~u_init:None ~prms:(P.unpack handle (Arr theta')) tasks.(0)
+             in
+             AD.unpack_flt l
+           in
+           Float.((loss' - loss) / delta)
+         in
+         [| true_g; est_g |])
+  |> Mat.of_arrays
+  |> Mat.save_txt ~out:file
+  |> fun _ -> Stdio.print_endline ""
+
+
+let _ = check_grad ~prms:init_prms (`random 50) (in_dir "checks")

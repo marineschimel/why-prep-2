@@ -18,14 +18,24 @@ module Sparse : sig
   val init : ?am:float -> lambda:float -> Owl_parameters.setter -> P.p
 end
 
-
 module Gaussian_Phi (X : sig
   val phi_u : AD.t -> AD.t
   val d_phi_u : AD.t -> AD.t
   val d2_phi_u : AD.t -> AD.t
-end)
-: sig
+end) : sig
   include Prior_T with type 'a P.prm = 'a Gaussian_Phi_P.prm
 
   val init : ?am:float -> lambda:float -> Owl_parameters.setter -> P.p
+end
+
+module Student : sig
+  include Prior_T with type 'a P.prm = 'a Student_P.prm
+
+  val init
+    :  ?pin_std:bool
+    -> ?spatial_std:float
+    -> ?nu:float
+    -> m:int
+    -> Owl_parameters.setter
+    -> P.p
 end

@@ -33,7 +33,12 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
             Float.to_int
               ((task.t_prep +. (Float.of_int n_tgts *. task.t_mov) +. sum_pauses +. th)
               /. task.dt)
-          | None -> Float.to_int ((task.t_prep +. task.t_mov) /. task.dt))
+          | None ->
+  
+              Float.to_int
+                ((task.t_prep +. (Float.of_int n_tgts *. task.t_mov) +. sum_pauses)
+                /. task.dt)
+          )
         | None ->
           (match task.t_hold with
           | Some th -> Float.to_int ((task.t_prep +. task.t_mov +. th) /. task.dt)
@@ -138,15 +143,9 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       let cprev = ref 1E9 in
       fun k us ->
         let c = loss ~theta x0 us in
-        let pct_change = Float.(abs (c -. !cprev) /. !cprev) in
+        let pct_change = Float.(abs ((c -. !cprev) /. !cprev)) in
         cprev := c;
         Stdio.printf "\n loss %f || pct_change %f || Iter %i \n%!" c pct_change k;
-        (* Mat.save_txt
-          ~out:
-            (Printf.sprintf
-               "/rds/user/mmcs3/hpc-work/_results/why_prep/baseline_11/us_%i"
-               k)
-          (AD.unpack_arr (AD.Maths.concatenate ~axis:0 (Array.of_list us))); *)
         let _ =
           match save with
           | None -> ()
@@ -164,17 +163,18 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       | Some us ->
         List.init M.n_steps ~f:(fun k -> AD.pack_arr (Mat.get_slice [ [ k ] ] us))
     in
-    (*
-          u0        u1  u2 ......   uT
-          x0 = 0    x1  x2 ......   xT xT+1
-      *)
-    let tau =
-      IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
-    in
-    let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
-    ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
-    , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
-    , IP.differentiable_loss ~theta:prms tau )
+    try
+      let tau =
+        IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
+      in
+      let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
+      ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
+      , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
+      , IP.differentiable_loss ~theta:prms tau )
+    with
+    | e ->
+      Stdio.printf "%s %!" (Exn.to_string e);
+      AD.Mat.zeros 1 1, AD.Mat.zeros 1 1, AD.F (-444.)
 
 
   let run ~ustars ~n ~m ~x0 ~prms task =

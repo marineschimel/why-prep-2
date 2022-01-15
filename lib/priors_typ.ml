@@ -59,7 +59,6 @@ module Log_barrier_P = struct
     f init (x.a, with_prefix ?prefix "a")
 end
 
-
 module Gaussian_Phi_P = struct
   type 'a prm =
     { lambda_prep : 'a
@@ -75,3 +74,16 @@ module Gaussian_Phi_P = struct
     f init (x.lambda_mov, with_prefix ?prefix "lambda_mov")
 end
 
+module Student_P = struct
+  type 'a prm =
+    { spatial_stds : 'a
+    ; nu : 'a
+    }
+  [@@deriving accessors ~submodule:A]
+
+  let map ~f x = { spatial_stds = f x.spatial_stds; nu = f x.nu }
+
+  let fold ?prefix ~init ~f x =
+    let init = f init (x.spatial_stds, with_prefix ?prefix "spatial_stds") in
+    f init (x.nu, with_prefix ?prefix "nu")
+end
