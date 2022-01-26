@@ -1,11 +1,14 @@
 (executables
  (names
   run_soc
+  gather
+  run_noisy_baseline
   run_sparse_soc
   run_double
   double_analysis
   prep_analysis
   run_soc_noises
+  construct
   gather_arm
   check_grads
   opt_multiscale
@@ -13,6 +16,7 @@
   run_arm
   run_fast
   costs
+  gather_random_baselines
   run_soft_soc
   test_priors
   run_log_barrier

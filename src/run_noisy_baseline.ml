@@ -3,6 +3,7 @@ module AD = Algodiff.D
 module M = Arm.Make (Arm.Defaults)
 open Lib
 open Base
+open Accessor.O
 
 (* Setting up the parameters/directories
 *)
@@ -52,7 +53,7 @@ let link_f x = phi_x x
 let target i = targets.(i)
 let dt = 2E-3
 let lambda_prep = lambda
-let lambda_mov = lambda
+let lambda_mov = lambda *. 1000.
 let n_out = 2
 let _n = 204
 let m = 200
@@ -78,34 +79,15 @@ let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec" data_di
 
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 
-let c = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad / sqrt (of_int m)) 2 m)
-let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1))
-(* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
+(* let c = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad / sqrt (of_int m)) 2 m) *)
 
-(* let x0 =
-  C.broadcast' (fun () ->
-      AD.Maths.transpose (AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/x0" dir)))) *)
-
-let u0 = phi_x x0
-let norm_u0 = AD.Maths.(l2norm_sqr' u0)
-let c = AD.Maths.(c - (c *@ u0 *@ transpose u0 / norm_u0))
-
-let _ =
-  C.root_perform (fun () ->
-      Mat.save_txt
-        ~out:(Printf.sprintf "%s/nullspace" dir)
-        (AD.unpack_arr AD.Maths.(c *@ u0)))
-
+(* let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1)) *)
+let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir)))
 
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/c" dir) (AD.unpack_arr c))
 
-
-(* 
-let _ =
-  C.root_perform (fun () ->
-      Mat.save_txt ~out:(Printf.sprintf "%s/x0" dir) (AD.unpack_arr x0)) *)
 
 let b = Mat.eye m
 
@@ -117,32 +99,17 @@ what about one population receiving modulated inputs about the target?
 (* x(t+1)- x(t) = Wx(t) + baseline => 0 when x = -W^(-1)*baseline  *)
 (* let baseline_input = AD.Mat.ones 1 m *)
 
-(* let x0 =
-  let winv = AD.Linalg.linsolve (AD.pack_arr w) (AD.Mat.eye m) in
-  AD.Maths.(neg (winv *@ transpose baseline_input)) |> AD.Maths.transpose *)
-
-(* let x0 =
-  C.broadcast' (fun () ->
-      AD.Maths.transpose (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/x0" dir)))) *)
-
-let baseline_input =
-  C.broadcast' (fun () ->
-      AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose)
-
-
-let x0 =
-  AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0 |> AD.Maths.transpose
-
-
 let tasks =
   Array.init
-    (n_targets * Array.length t_preps)
+    (n_targets * Array.length t_preps * 100)
     ~f:(fun i ->
-      let n_time = i / n_targets in
+      let x0 = AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:20. m 1) in
       let n_target = Int.rem i n_targets in
       Model.
-        { t_prep = t_preps.(n_time)
-        ; x0
+        { t_prep = 0.5
+        ; x0 =
+            AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0
+            |> AD.Maths.transpose
         ; t_mov = 0.4
         ; dt
         ; t_hold = Some 0.2
@@ -210,7 +177,7 @@ let prms =
         Dynamics.Arm_Plus_P.
           { a = (pinned : setter) (AD.pack_arr Mat.(transpose w))
           ; b = (pinned : setter) (AD.pack_arr b)
-          ; bias = (pinned : setter) baseline_input
+          ; bias = (pinned : setter) (AD.Mat.zeros 1 m)
           }
       in
       let prior =
@@ -249,7 +216,6 @@ let save_results suffix xs us n_target n_prep task =
   let thetas, xs, us =
     Mat.get_slice [ []; [ 0; 3 ] ] xs, Mat.get_slice [ []; [ 4; -1 ] ] xs, us
   in
-  let x0 = Mat.get_slice [ []; [ 4; -1 ] ] (AD.unpack_arr x0) in
   let rates = AD.unpack_arr (link_f (AD.pack_arr xs)) in
   let ue_prep, ue_mov, ue_tot =
     Analysis_funs.cost_u ~f:(fun _ x -> Mat.l2norm_sqr' x) ~n_prep us
@@ -281,31 +247,45 @@ let save_results suffix xs us n_target n_prep task =
   Owl.Mat.save_txt ~out:(file "xs") xs;
   Owl.Mat.save_txt ~out:(file "us") us;
   Owl.Mat.save_txt ~out:(file "rates") rates;
-  Owl.Mat.save_txt ~out:(file "eff_us") (AD.unpack_arr (link_f (AD.pack_arr us)));
-  Owl.Mat.save_txt
-    ~out:(file "torques")
-    Mat.((rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
+  Owl.Mat.save_txt ~out:(file "eff_us") (AD.unpack_arr (link_f (AD.pack_arr us)))
+
+
+let replace_baseline prms x0 =
+  let open Model in
+  let open Full_P.A in
+  let open Generative_P.A in
+  let open Owl_parameters in
+  let u = AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose in
+  let new_prms =
+    Accessor.map
+      (generative @> dynamics @> Dynamics.Arm_Plus_P.A.bias)
+      ~f:(fun _ -> (pinned : setter) u)
+  in
+  new_prms prms
 
 
 let _ =
-  let x0 = x0 in
   let _ = save_prms "" prms in
-  try
-    Array.iteri tasks ~f:(fun i t ->
-        if Int.(i % C.n_nodes = C.rank)
-        then (
-          let n_target = Int.rem i n_targets in
-          let t_prep = Float.to_int (1000. *. t.t_prep) in
-          let xs, us, l =
-            I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
-          in
-          save_results (Printf.sprintf "%i_%i" n_target t_prep) xs us n_target t_prep t;
-          Mat.save_txt
-            ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep))
-            (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-          save_task (Printf.sprintf "%i_%i" n_target t_prep) t))
-  with
-  | _ -> ()
+  Array.iteri tasks ~f:(fun i t ->
+      if Int.(i % C.n_nodes = C.rank)
+      then (
+        let n_target = Int.rem i n_targets in
+        let t_prep = Float.to_int (1000. *. t.t_prep) in
+        let xs, us, l =
+          I.solve
+            ~u_init:Mat.(gaussian ~sigma:0. 2001 m)
+            ~n:(m + 4)
+            ~m
+            ~x0:t.x0
+            ~prms:
+              (replace_baseline prms AD.Maths.(get_slice [ [ 4; -1 ] ] (transpose t.x0)))
+            t
+        in
+        save_results (Printf.sprintf "%i" i) xs us n_target t_prep t;
+        Mat.save_txt
+          ~out:(in_dir (Printf.sprintf "loss_%i" i))
+          (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
+        save_task (Printf.sprintf "%i" i) t))
 
 
 let _ = C.barrier ()

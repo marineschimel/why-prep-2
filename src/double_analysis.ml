@@ -78,6 +78,8 @@ let ls_double_reaches =
   |]
 
 
+let n_double_reaches = Array.length ls_double_reaches
+
 let preprocessed_data =
   let load i =
     let m = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" i t_prep)) in
@@ -329,10 +331,17 @@ let in_saving_dir = Printf.sprintf "%s/%s" saving_dir
 
 (*T*N*)
 let proj2d =
-  let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
+  let double_duration =
+    let reach_0 =
+      Mat.load_txt (in_saving_dir Printf.(sprintf "rates_0_%i_%i" 0 t_prep))
+    in
+    Mat.row_num reach_0
+  in
+  let _ = Stdio.printf "%i %i %!" (Mat.row_num double_data) (Mat.col_num double_data) in
+  let m = Arr.reshape double_data [| n_double_reaches; double_duration; -1 |] in
   fun i ->
     let x =
-      let a = Arr.reshape (Arr.get_slice [ [ i ]; []; [] ] m) [| duration; -1 |] in
+      let a = Arr.reshape (Arr.get_slice [ [ i ]; []; [] ] m) [| double_duration; -1 |] in
       a
     in
     let _ = Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/check_%i" i)) x in
@@ -346,7 +355,9 @@ let _ = Array.init n_reaches (fun i -> proj2d i)
 
 let occupancy_double =
   let double_duration =
-    let reach_0 = Mat.load_txt (in_saving_dir Printf.(sprintf "rates_%i_%i" 0 t_prep)) in
+    let reach_0 =
+      Mat.load_txt (in_saving_dir Printf.(sprintf "rates_0_%i_%i" 0 t_prep))
+    in
     Mat.row_num reach_0
   in
   let load k =
@@ -386,5 +397,5 @@ let occupancy_double =
     , let x = Arr.var ~axis:2 rms |> Arr.sum ~axis:1 |> Arr.to_array in
       Mat.of_array x (-1) 1 )
   in
-  ( Mat.save_txt ~out:(in_double_dir "analysis/vprep") Mat.(vprep /$ max' vprep)
-  , Mat.save_txt ~out:(in_double_dir "analysis/vmov") Mat.(vmov /$ max' vmov) )
+  ( Mat.save_txt ~out:(in_saving_dir "analysis/vprep") Mat.(vprep /$ max' vprep)
+  , Mat.save_txt ~out:(in_saving_dir "analysis/vmov") Mat.(vmov /$ max' vmov) )

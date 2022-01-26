@@ -85,11 +85,6 @@ let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c"
 (* C.broadcast' (fun () ->
       AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/opt_readout" dir))) *)
 
-let _ =
-  C.root_perform (fun () ->
-      Mat.save_txt ~out:(Printf.sprintf "%s/c" dir) (AD.unpack_arr c))
-
-
 let b = Mat.eye m
 
 (*structure : get inputs from task, then from the same SOC just generating inputs, 
@@ -101,7 +96,9 @@ what about one population receiving modulated inputs about the target?
 
 let x0 =
   C.broadcast' (fun () ->
-      AD.Maths.transpose (AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/x0" dir))))
+      AD.Maths.transpose
+        (AD.pack_arr
+           (Mat.get_slice [ [ 0 ] ] Mat.(load_txt (Printf.sprintf "%s/xs_1_500" dir)))))
 
 
 let baseline_input =
@@ -112,13 +109,6 @@ let baseline_input =
 let u0 = phi_x x0
 let norm_u0 = AD.Maths.(l2norm_sqr' u0)
 let c = AD.Maths.(c - (c *@ u0 *@ transpose u0 / norm_u0))
-
-let _ =
-  C.root_perform (fun () ->
-      Mat.save_txt
-        ~out:(Printf.sprintf "%s/nullspace" dir)
-        (AD.unpack_arr AD.Maths.(c *@ u0)))
-
 
 let x0 =
   AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0 |> AD.Maths.transpose
@@ -143,7 +133,7 @@ let tasks =
         ; t_mov = 0.4
         ; dt
         ; t_hold = None
-        ; t_pauses = Some [| 0.05; 0.2 |]
+        ; t_pauses = Some [| 0.5; 0.2 |]
         ; scale_lambda = None
         ; target = AD.pack_arr double_target
         ; theta0
@@ -151,8 +141,14 @@ let tasks =
         })
 
 
-let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
-let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/task_%s" dir suffix) task
+let save_prms suffix prms =
+  Misc.save_bin (Printf.sprintf "%s/sequential/prms_%s" dir suffix) prms
+
+
+let save_task suffix task =
+  Misc.save_bin (Printf.sprintf "%s/sequential/task_%s" dir suffix) task
+
+
 let epsilon = 1E-1
 
 module U = Priors.Gaussian
@@ -207,7 +203,7 @@ let prms =
 module I = Model.ILQR (U) (D0) (L0)
 
 let save_results suffix xs us n_prep task =
-  let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
+  let file s = Printf.sprintf "%s/sequential/%s_%s" dir s suffix in
   let xs = AD.unpack_arr xs in
   let us = AD.unpack_arr us in
   let torque_err, target_err =
@@ -260,8 +256,7 @@ let _ =
           save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
           Mat.save_txt
             ~out:(in_dir (Printf.sprintf "loss_%i_%i_%i" k j t_prep))
-            (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-          save_task (Printf.sprintf "%i_%i_%i" k j t_prep) t))
+            (Mat.of_array [| AD.unpack_flt l |] 1 (-1))))
   with
   | _ -> ()
 
