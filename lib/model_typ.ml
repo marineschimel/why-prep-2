@@ -9,7 +9,7 @@ type task =
   ; theta0 : AD.t
   ; t_prep : float
   ; x0 : AD.t
-  ; t_mov : float
+  ; t_movs : float array
   ; t_hold : float option
   ; t_pauses : float array option (*give an array of pause times during all the reaches*)
   ; scale_lambda : float option

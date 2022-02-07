@@ -28,21 +28,15 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         | Some tps ->
           let n_tgts = Array.length tps in
           let sum_pauses = Mat.sum' (Mat.of_arrays [| tps |]) in
+          let sum_mov = Mat.sum' (Mat.of_arrays [| task.t_movs |]) in
           (match task.t_hold with
           | Some th ->
-            Float.to_int
-              ((task.t_prep +. (Float.of_int n_tgts *. task.t_mov) +. sum_pauses +. th)
-              /. task.dt)
-          | None ->
-  
-              Float.to_int
-                ((task.t_prep +. (Float.of_int n_tgts *. task.t_mov) +. sum_pauses)
-                /. task.dt)
-          )
+            Float.to_int ((task.t_prep +. sum_mov +. sum_pauses +. th) /. task.dt)
+          | None -> Float.to_int ((task.t_prep +. sum_mov +. sum_pauses) /. task.dt))
         | None ->
           (match task.t_hold with
-          | Some th -> Float.to_int ((task.t_prep +. task.t_mov +. th) /. task.dt)
-          | None -> Float.to_int ((task.t_prep +. task.t_mov) /. task.dt))
+          | Some th -> Float.to_int ((task.t_prep +. task.t_movs.(0) +. th) /. task.dt)
+          | None -> Float.to_int ((task.t_prep +. task.t_movs.(0)) /. task.dt))
 
 
       let cost ~theta =
@@ -202,7 +196,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
     let theta, lbound, ubound = Packer.finalize () in
     let theta = AD.unpack_arr theta in
     let us_init = Array.create ~len:n_trials None in
-    let adam_loss theta gradient =
+    let adam_loss _ theta gradient =
       Stdlib.Gc.full_major ();
       let theta = C.broadcast theta in
       let _ = Stdio.printf "%i %i" (Arr.shape theta).(0) (Arr.shape theta).(1) in
@@ -242,7 +236,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
                 let prefix = Printf.sprintf "%s_%i" prefix iter in
                 let prms = F.unpack handle (AD.pack_arr theta) in
                 Misc.save_bin (prefix ^ ".params.bin") prms;
-                F.save_to_files ~prefix ~prms);
+                F.save_to_files ~prefix prms);
               if Int.((iter - 1) % loss_every) = 0
               then (
                 Stdio.printf "\r[%05i] %.4f%!" iter current_loss;

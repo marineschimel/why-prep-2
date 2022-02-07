@@ -7,12 +7,12 @@ let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let t_prep_2 = Cmdargs.(get_int "-prep_2" |> default (t_prep + 900))
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let in_dir seed s = Printf.sprintf "%s/seed_%i/%s" dir seed s
-let in_double_dir seed s = Printf.sprintf "%s/seed_%i/sequential/%s" dir seed s
+let in_double_dir seed s = Printf.sprintf "%s/seed_%i/sequential_mov/%s" dir seed s
 let compound = Cmdargs.check "-compound"
-let in_compound_dir seed = Printf.sprintf "%s/seed_%i/double/%s" dir seed
+let in_compound_dir seed = Printf.sprintf "%s/seed_%i/double_longer/%s" dir seed
 let saving_dir = if compound then in_compound_dir else in_double_dir
 let n_dim = 8
-let n_reaches = 8
+let n_reaches = 7
 let n_var = 8
 let dt = 2E-3
 let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 0 t_prep))
@@ -22,7 +22,7 @@ let double_reach_0 =
 
 
 let size_prep = 200
-let size_prep_2 = 100
+let size_prep_2 = 200
 let size_mov = 200
 let duration = Mat.row_num reach_0
 let double_duration = Mat.row_num double_reach_0
@@ -35,29 +35,37 @@ let softmax x =
 
 
 let ls_double_reaches =
-  [| 0, 1
+  [| (* 0, 1 *)
+     0, 2 (* ; 0, 3 *)
    ; 0, 4
-   ; 0, 5
-   ; 0, 6
-   ; 1, 2
-   ; 1, 5
-   ; 2, 3
+     (* ; 0, 5
+   ; 0, 6 *)
+   ; 1, 0
+   ; 1, 2 (* ; 1, 5 *)
+   ; 1, 6
    ; 2, 1
+   ; 2, 1
+   ; 2, 3
    ; 2, 4
    ; 2, 5
+   ; 2, 0
+   ; 3, 0
    ; 3, 2
-   ; 3, 3
    ; 3, 4
    ; 3, 5
+   ; 3, 6
    ; 4, 2
    ; 4, 3
    ; 4, 6
-   ; 5, 1
+   ; 5, 1 (* ; 5, 0 *)
    ; 5, 2
    ; 5, 3
    ; 5, 4
    ; 5, 6
    ; 6, 0
+   ; 6, 1
+   ; 6, 2
+   ; 6, 4
   |]
 
 
@@ -176,9 +184,7 @@ let x_mov_from_double seed =
 
 let data_to_proj seed =
   let load i j =
-    let m =
-      Mat.load_txt (saving_dir seed Printf.(sprintf "double/rates_%i_%i_%i" i j t_prep))
-    in
+    let m = Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" i j t_prep)) in
     Arr.reshape m [| Mat.row_num m; -1; 1 |]
   in
   let data = Array.map (fun (i, j) -> load i j) ls_double_reaches in
@@ -266,42 +272,6 @@ let ws seed =
   new_wp |> AD.unpack_arr, new_wm |> AD.unpack_arr
 
 
-let captured_variance seed =
-  let wp, wm = ws seed in
-  let cov_p = cov_p seed in
-  let cov_m = cov_m seed in
-  let _mp, sp, _ = Linalg.D.svd (Mat.transpose (x_prep seed)) in
-  let _mv, sm, _ = Linalg.D.svd (Mat.transpose (x_mov seed)) in
-  let sp, sm = Mat.sqr sp, Mat.sqr sm in
-  let _, _ = Mat.(cumsum ~axis:1 sp /$ sum' sp), Mat.(cumsum ~axis:1 sm /$ sum' sm) in
-  let top_mp, top_mv =
-    Mat.get_slice [ []; [ 0; n_var - 1 ] ] wp, Mat.get_slice [ []; [ 0; n_var - 1 ] ] wm
-  in
-  let m = Mat.(transpose top_mp *@ cov_p *@ top_mp) in
-  let x = Mat.(x_mov seed *@ top_mp *@ transpose top_mp) in
-  let y = Mat.(x_prep seed *@ top_mv *@ transpose top_mv) in
-  let z = Mat.(transpose top_mv *@ cov_p *@ top_mv) in
-  let zz = Mat.(transpose top_mp *@ cov_m *@ top_mp) in
-  let xcent = Mat.(x - mean ~axis:0 x) in
-  let ycent = Mat.(y - mean ~axis:0 y) in
-  let _, ss, _ = Linalg.D.svd xcent in
-  let _, tt, _ = Linalg.D.svd ycent in
-  let _ =
-    Printf.printf
-      "pct_var %f %f %f %!"
-      (Mat.trace z /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sp))
-      (Mat.trace zz /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sm))
-      (Mat.trace m /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sp))
-  in
-  ( Mat.save_txt
-      ~out:(in_dir seed (Printf.sprintf "analysis/pct_var_%i" seed))
-      Mat.(
-        (cumsum ~axis:1 (Mat.sqr tt) /$ sum' sp)
-        @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm))
-  , top_mp
-  , top_mv )
-
-
 let proj x modes =
   (*x is T*N and modes is N*n_dim*)
   let proj = Mat.(x *@ modes) in
@@ -309,6 +279,70 @@ let proj x modes =
 
 
 let reconstructed proj modes = Mat.(proj *@ transpose modes)
+
+let preprocessed_data seed =
+  let load i =
+    let m = Mat.load_txt (in_dir seed Printf.(sprintf "rates_%i_%i" i t_prep)) in
+    let ma = Mat.get_fancy [ R [ 0; duration - 1 ]; R [ 0; -1 ] ] m in
+    Arr.reshape ma [| duration; -1; 1 |]
+  in
+  let data = Array.init n_reaches (fun i -> load i) in
+  let concat_data = Arr.concatenate ~axis:0 data in
+  let norm_factor =
+    Mat.(max ~axis:0 concat_data - min ~axis:0 concat_data +$ (0.1 *. max' concat_data))
+    |> fun z -> Arr.reshape z [| 1; -1; 1 |]
+  in
+  let norm_data = Array.map (fun x -> Arr.(x / norm_factor)) data in
+  let mean_data = Arr.concatenate ~axis:2 norm_data |> Arr.mean ~axis:2 in
+  let dat =
+    let a =
+      Arr.concatenate ~axis:0 (Array.map (fun x -> Arr.(x - mean_data)) norm_data)
+    in
+    Arr.reshape a [| (Arr.shape a).(0); (Arr.shape a).(1) |]
+  in
+  Mat.of_arrays (Arr.to_arrays dat)
+
+
+let seed = 1
+
+let wp =
+  try Mat.load_txt (in_dir 1 (Printf.sprintf "projs_mov/wp")) with
+  | _ ->
+    let wp, _ = ws seed in
+    Mat.save_txt ~out:(in_dir 1 (Printf.sprintf "projs_mov/wp")) wp;
+    wp
+
+
+(* 
+let x_sub_prep_from_double =
+  let open Base in
+  let m =
+    Arr.reshape (get_double_data seed) [| n_double_reaches; double_duration; -1 |]
+  in
+  Array.init 7 ~f:(fun reach ->
+      let ls =
+        Array.foldi ls_double_reaches ~init:[] ~f:(fun j accu (n, i) ->
+            let x =
+              Arr.reshape
+                (Arr.get_slice [ [ j ]; [ n_prep - size_prep; n_prep - 1 ]; [] ] m)
+                [| size_prep; -1 |]
+            in
+            if n = reach && (Int.(n + i = 6) || (n = 3 && i = 2) || (n = 5 && i = 2))
+            then x :: accu
+            else accu)
+      in
+      Mat.concatenate ~axis:0 (Array.of_list ls))
+  |> Mat.concatenate ~axis:0
+
+
+(*size n_reaches * N*)
+
+let first_reaches = Mat.(x_prep_from_single 1 @= x_sub_prep_from_double) *)
+
+(* let b =
+  let proj_wp = Mat.(first_reaches *@ wp) in
+  let _, _, v = Linalg.D.svd proj_wp in
+  v *)
 
 let occupancy seed =
   let double_reach_0 =
@@ -319,47 +353,80 @@ let occupancy seed =
     Mat.get_slice
       [ [ i * double_duration; ((i + 1) * double_duration) - 1 ]; [] ]
       (data_to_proj seed)
-    (* let m = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" i t_prep)) in
-    let ma = Mat.get_fancy [ R [ 0; duration - 1 ]; R [ 0; -1 ] ] m in
-    ma *)
   in
-  let wp, wm = ws seed in
   let projections x =
     let rp = reconstructed (proj x wp) wp in
-    let rm = reconstructed (proj x wm) wm in
-    Mat.(rp + rm), rp, rm, x
+    rp
   in
   let rps =
     Arr.concatenate
       ~axis:2
       (Array.init n_double_reaches (fun i ->
-           let _, rp, _, _ = projections (load i) in
+           let rp = projections (load i) in
            let m = Arr.reshape rp [| (Arr.shape rp).(0); (Arr.shape rp).(1); 1 |] in
            m))
-  and rms =
-    Arr.concatenate
-      ~axis:2
-      (Array.init n_double_reaches (fun i ->
-           let _, _, rm, _ = projections (load i) in
-           let m = Arr.reshape rm [| (Arr.shape rm).(0); (Arr.shape rm).(1); 1 |] in
-           m))
   in
-  let vprep, vmov =
+  let vprep =
     let x = Arr.var ~axis:2 rps |> Arr.sum ~axis:1 |> Arr.to_array in
-    ( Mat.of_array x (-1) 1
-    , let x = Arr.var ~axis:2 rms |> Arr.sum ~axis:1 |> Arr.to_array in
-      Mat.of_array x (-1) 1 )
+    Mat.of_array x (-1) 1
   in
-  Mat.(vprep /$ max' vprep), Mat.(vmov /$ max' vmov)
+  Mat.(vprep /$ max' vprep)
 
 
 let _ =
-  let a = Array.init 5 (fun seed -> occupancy (succ seed)) in
-  let vprep_mean = a |> Array.map fst |> Mat.concatenate ~axis:1 |> Mat.mean ~axis:1 in
-  let vmov_mean = a |> Array.map snd |> Mat.concatenate ~axis:1 |> Mat.mean ~axis:1 in
-  let vprep_var = a |> Array.map fst |> Mat.concatenate ~axis:1 |> Mat.var ~axis:1 in
-  let vmov_var = a |> Array.map snd |> Mat.concatenate ~axis:1 |> Mat.var ~axis:1 in
-  Mat.save_txt ~out:(Printf.sprintf "%s/analysis/vmov" dir) Mat.(vmov_mean @|| vmov_var);
-  Mat.save_txt
-    ~out:(Printf.sprintf "%s/analysis/vprep" dir)
-    Mat.(vprep_mean @|| vprep_var)
+  let vprep = occupancy 1 in
+  Mat.save_txt ~out:(Printf.sprintf "%s/seed_1/projs_mov/vprep" dir) vprep
+
+
+let proj2d =
+  let double_reach_0 =
+    Mat.load_txt (saving_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 2 t_prep))
+  in
+  let double_duration = Mat.row_num double_reach_0 in
+  let m = Arr.reshape (data_to_proj seed) [| n_double_reaches; double_duration; -1 |] in
+  fun i ->
+    let x =
+      let a = Arr.reshape (Arr.get_slice [ [ i ]; []; [] ] m) [| double_duration; -1 |] in
+      a
+    in
+    let proj_prep = proj x wp in
+    Mat.save_txt ~out:(Printf.sprintf "%s/seed_1/projs_mov/proj_prep_%i" dir i) proj_prep
+
+
+let _ =
+  Array.init 7 (fun i ->
+      proj2d i;
+      i)
+
+
+(* let wp = Mat.(wp *@ b) *)
+
+let single_projs reach =
+  let m = Arr.reshape (preprocessed_data seed) [| n_reaches; duration; -1 |] in
+  let x = Arr.reshape (Arr.get_slice [ [ reach ]; [ n_prep ]; [] ] m) [| 1; -1 |] in
+  proj x wp
+
+
+let double_projs reach =
+  let open Base in
+  let m =
+    Arr.reshape (get_double_data seed) [| n_double_reaches; double_duration; -1 |]
+  in
+  let ls =
+    Array.foldi ls_double_reaches ~init:[] ~f:(fun j accu (n, _) ->
+        let x = Arr.reshape (Arr.get_slice [ [ j ]; [ n_prep ]; [] ] m) [| 1; -1 |] in
+        if n = reach then proj x wp :: accu else accu)
+  in
+  Mat.concatenate ~axis:0 (Array.of_list ls)
+
+(*rotate W : project the prep of single reaches and 7 double reaches onto it, then apply PCA to the N_d x (14xT) matrix and we get a matrix B by which we rotate Wp *)
+(* let _ =
+  Array.iter
+    (fun i ->
+      let m_doub = double_projs i in
+      let m_sing = single_projs i in
+      let conc = Mat.(transpose m_sing @|| transpose m_doub) in
+      Mat.save_txt ~out:(in_dir 1 (Printf.sprintf "projs/single_%i" i)) m_sing;
+      Mat.save_txt ~out:(in_dir 1 (Printf.sprintf "projs/doub_%i" i)) m_doub;
+      Mat.save_txt ~out:(in_dir 1 (Printf.sprintf "projs/conc_%i" i)) conc)
+    (Array.init 7 (fun i -> i)) *)

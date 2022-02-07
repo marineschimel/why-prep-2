@@ -194,8 +194,6 @@ let proj2d =
       let a = Arr.reshape (Arr.get_slice [ [ i ]; []; [] ] m) [| duration; -1 |] in
       a
     in
-    let _ = Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/check_%i" i)) x in
-    let proj_mov = proj x wm in
     let proj_prep = proj x wp in
     Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/proj_prep_%i" i)) proj_prep;
     Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/proj_mov_%i" i)) proj_mov

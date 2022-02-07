@@ -14,6 +14,7 @@ let lambda =
 
 
 let rad = Cmdargs.(get_float "-rad" |> default 0.5)
+let seed = Cmdargs.(get_int "-seed" |> default 1)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
@@ -68,8 +69,11 @@ let _ =
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 
 (* let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.2; 0.3; 0.45; 0.5; 0.6; 0.8; 1. |] *)
-let t_preps = [| 0.5 |]
-let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec" data_dir)))
+let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.2; 0.3; 0.45; 0.5; 0.6; 0.8; 1. |]
+
+let w =
+  C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)))
+
 
 (* let _ =
   C.root_perform (fun () ->

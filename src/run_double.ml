@@ -9,10 +9,15 @@ let _ = Backtrace.Exn.set_recording true
 (* Setting up the parameters/directories
 *)
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
+let subdir = Cmdargs.(get_string "-subdir" |> force ~usage:"-d [dir to save in]")
 let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which data is]")
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
+
+let lambda =
+  Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
+
 
 let targets =
   C.broadcast' (fun () ->
@@ -28,13 +33,19 @@ let targets =
 
 
 let double_targets =
+  Array.init n_targets ~f:(fun n ->
+      let ti = targets.(n) in
+      let tj = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] in
+      Mat.(ti @= tj))
+
+
+(* let double_targets =
   Array.init (n_targets ** 2) ~f:(fun n ->
       let i = Int.(n / n_targets) in
       let j = n - (i * n_targets) in
       let ti = targets.(i) in
       let tj = targets.(j) in
-      Mat.(ti @= tj))
-
+      Mat.(ti @= tj)) *)
 
 (* Array.map targets ~f:(fun ti ->
       Array.map targets ~f:(fun t -> Mat.(ti @= t))
@@ -62,8 +73,8 @@ let d2_phi_x x = AD.Maths.(F 1. / beta * AD.d2_requad (x / beta)) *)
 let link_f x = phi_x x
 let double_target i = double_targets.(i)
 let dt = 2E-3
-let lambda_prep = 1E-5
-let lambda_mov = 1E-5
+let lambda_prep = lambda
+let lambda_mov = lambda
 let n_out = 2
 let _n = 204
 let m = 200
@@ -116,21 +127,21 @@ let x0 =
 
 let tasks =
   Array.init
-    (n_targets * n_targets * Array.length t_preps)
+    (n_targets * Array.length t_preps)
     ~f:(fun i ->
       let k = i / (n_targets * Array.length t_preps) in
       let next_i = Int.rem i (n_targets * Array.length t_preps) in
-      let j = next_i / Array.length t_preps in
+      let _j = next_i / Array.length t_preps in
       let n_time = Int.rem next_i (Array.length t_preps) in
       let double_target =
         let ti = targets.(k) in
-        let tj = targets.(j) in
+        let tj = AD.unpack_arr theta0 in
         Mat.(ti @= tj)
       in
       Model.
         { t_prep = t_preps.(n_time)
         ; x0
-        ; t_mov = 0.4
+        ; t_movs = [| 0.4; 0.4 |]
         ; dt
         ; t_hold = None
         ; t_pauses = Some [| 0.5; 0.2 |]
@@ -142,11 +153,11 @@ let tasks =
 
 
 let save_prms suffix prms =
-  Misc.save_bin (Printf.sprintf "%s/sequential/prms_%s" dir suffix) prms
+  Misc.save_bin (Printf.sprintf "%s/%s/prms_%s" dir subdir suffix) prms
 
 
 let save_task suffix task =
-  Misc.save_bin (Printf.sprintf "%s/sequential/task_%s" dir suffix) task
+  Misc.save_bin (Printf.sprintf "%s/%s/task_%s" dir subdir suffix) task
 
 
 let epsilon = 1E-1
@@ -178,8 +189,8 @@ let prms =
           { c = (pinned : setter) c
           ; c_mask = None
           ; qs_coeff = (pinned : setter) (AD.F 1.)
-          ; t_coeff = (pinned : setter) (AD.F 10.)
-          ; g_coeff = (pinned : setter) (AD.F 10.)
+          ; t_coeff = (pinned : setter) (AD.F 0.5)
+          ; g_coeff = (pinned : setter) (AD.F 5.)
           }
       in
       let dynamics =
@@ -203,7 +214,7 @@ let prms =
 module I = Model.ILQR (U) (D0) (L0)
 
 let save_results suffix xs us n_prep task =
-  let file s = Printf.sprintf "%s/sequential/%s_%s" dir s suffix in
+  let file s = Printf.sprintf "%s/%s/%s_%s" dir subdir s suffix in
   let xs = AD.unpack_arr xs in
   let us = AD.unpack_arr us in
   let torque_err, target_err =

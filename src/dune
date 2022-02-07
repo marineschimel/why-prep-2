@@ -1,10 +1,13 @@
 (executables
  (names
   run_soc
+  check
   gather
   run_noisy_baseline
   run_sparse_soc
   run_double
+  analyses
+  proj_double_prep
   double_analysis
   prep_analysis
   run_soc_noises
