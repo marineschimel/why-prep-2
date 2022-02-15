@@ -28,3 +28,8 @@
  (libraries accessor adam owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

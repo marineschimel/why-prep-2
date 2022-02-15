@@ -19,10 +19,12 @@ let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
 
 
+let rad = Cmdargs.(get_float "-rad" |> default 0.12)
+
 let targets =
   C.broadcast' (fun () ->
       Array.init n_targets ~f:(fun i ->
-          let radius = 0.12 in
+          let radius = rad in
           let theta = Float.(of_int i *. Const.pi *. 2. /. of_int n_targets) in
           let x = Maths.(radius *. cos theta) in
           let y = Maths.(radius *. sin theta) in
@@ -32,20 +34,20 @@ let targets =
           Mat.of_array [| t1; t2; 0.; 0. |] 1 (-1)))
 
 
-let double_targets =
+(* let double_targets =
   Array.init n_targets ~f:(fun n ->
       let ti = targets.(n) in
       let tj = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] in
-      Mat.(ti @= tj))
+      Mat.(ti @= tj)) *)
 
-
-(* let double_targets =
+let double_targets =
   Array.init (n_targets ** 2) ~f:(fun n ->
       let i = Int.(n / n_targets) in
       let j = n - (i * n_targets) in
       let ti = targets.(i) in
       let tj = targets.(j) in
-      Mat.(ti @= tj)) *)
+      Mat.(ti @= tj))
+
 
 (* Array.map targets ~f:(fun ti ->
       Array.map targets ~f:(fun t -> Mat.(ti @= t))
@@ -127,24 +129,24 @@ let x0 =
 
 let tasks =
   Array.init
-    (n_targets * Array.length t_preps)
+    (n_targets * n_targets * Array.length t_preps)
     ~f:(fun i ->
       let k = i / (n_targets * Array.length t_preps) in
       let next_i = Int.rem i (n_targets * Array.length t_preps) in
-      let _j = next_i / Array.length t_preps in
+      let j = next_i / Array.length t_preps in
       let n_time = Int.rem next_i (Array.length t_preps) in
       let double_target =
         let ti = targets.(k) in
-        let tj = AD.unpack_arr theta0 in
+        let tj = targets.(j) in
         Mat.(ti @= tj)
       in
       Model.
         { t_prep = t_preps.(n_time)
         ; x0
-        ; t_movs = [| 0.4; 0.4 |]
+        ; t_movs = [| 0.3; 0.35 |]
         ; dt
         ; t_hold = None
-        ; t_pauses = Some [| 0.5; 0.2 |]
+        ; t_pauses = Some [| 0.1; 0.2 |]
         ; scale_lambda = None
         ; target = AD.pack_arr double_target
         ; theta0

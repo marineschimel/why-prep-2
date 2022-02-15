@@ -430,7 +430,7 @@ struct
         | None -> 0.
       in
       let n_2 = n_1 + Float.to_int (pause_0 /. task.dt) in
-      let n_3 = n_2 + Float.to_int (task.t_movs.(0) /. task.dt) in
+      let n_3 = n_2 + Float.to_int (task.t_movs.(1) /. task.dt) in
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
       let g_coeff = Owl_parameters.extract prms.g_coeff in
       let t_coeff = Owl_parameters.extract prms.t_coeff in
@@ -491,7 +491,7 @@ struct
         | None -> 0.
       in
       let n_2 = n_1 + Float.to_int (pause_0 /. task.dt) in
-      let n_3 = n_2 + Float.to_int (task.t_movs.(0) /. task.dt) in
+      let n_3 = n_2 + Float.to_int (task.t_movs.(1) /. task.dt) in
       let qs_coeff = Owl_parameters.extract prms.qs_coeff in
       let g_coeff = Owl_parameters.extract prms.g_coeff in
       let t_coeff = Owl_parameters.extract prms.t_coeff in

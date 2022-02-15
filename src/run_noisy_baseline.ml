@@ -17,12 +17,12 @@ let lambda =
 let rad = Cmdargs.(get_float "-rad" |> default 0.5)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
-let n_targets = 50
+let n_targets = 1520
 
 let targets =
   C.broadcast' (fun () ->
       Array.init n_targets ~f:(fun i ->
-          let radius = 0.12 in
+          let radius = Stats.uniform_rvs ~a:0.1 ~b:0.16 in
           let theta = Float.(of_int i *. Const.pi *. 2. /. of_int n_targets) in
           let x = Maths.(radius *. cos theta) in
           let y = Maths.(radius *. sin theta) in
@@ -80,8 +80,7 @@ let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec" data_di
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 
 let c = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad / sqrt (of_int m)) 2 m)
-
-(* let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1)) *)
+let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1))
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
 
 let _ =
@@ -100,19 +99,19 @@ what about one population receiving modulated inputs about the target?
 (* let baseline_input = AD.Mat.ones 1 m *)
 
 let tasks =
-  Array.init
-    (n_targets * Array.length t_preps * 24)
-    ~f:(fun i ->
-      let x0 = AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:20. m 1) in
+  Array.init n_targets ~f:(fun i ->
+      (* let x0 = AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:20. m 1) in *)
       let n_target = Int.rem i n_targets in
+      let t_hold = Stats.uniform_rvs ~a:0.15 ~b:0.3 in
+      let t_mov = Float.(0.4 +. 0.2 -. t_hold) in
       Model.
         { t_prep = 0.5
         ; x0 =
             AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0
             |> AD.Maths.transpose
-        ; t_mov = 0.4
+        ; t_movs = [| t_mov |]
         ; dt
-        ; t_hold = Some 0.2
+        ; t_hold = Some t_hold
         ; t_pauses = None
         ; scale_lambda = None
         ; target = AD.pack_arr (target n_target)
@@ -143,7 +142,7 @@ let phi_u x = phi_x x
   let d2_phi_u x = d2_phi_x x
 end) *)
 
-module D0 = Dynamics.Arm_Plus (struct
+module D0 = Dynamics.Arm_Discrete (struct
   let phi_x x = phi_x x
   let d_phi_x x = d_phi_x x
   let phi_u x = x
@@ -193,11 +192,12 @@ let prms =
 
 module I = Model.ILQR (U) (D0) (L0)
 
-let save_results suffix xs =
+let save_results suffix xs us =
   let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
   let xs = AD.unpack_arr xs in
   let rates = AD.unpack_arr (link_f (AD.pack_arr xs)) in
-  Owl.Mat.save_txt ~out:(file "rates") rates
+  Owl.Mat.save_txt ~out:(file "rates") rates;
+  Owl.Mat.save_txt ~out:(file "us") (AD.unpack_arr us)
 
 
 (* let torque_err, target_err =
@@ -272,7 +272,7 @@ let _ =
       if Int.(i % C.n_nodes = C.rank)
       then (
         try
-          let xs, _us, _l =
+          let xs, us, _l =
             I.solve
               ~u_init:Mat.(gaussian ~sigma:0. 2001 m)
               ~n:(m + 4)
@@ -284,7 +284,7 @@ let _ =
                    AD.Maths.(get_slice [ [ 4; -1 ] ] (transpose t.x0)))
               t
           in
-          save_results (Printf.sprintf "%i" i) xs
+          save_results (Printf.sprintf "%i" i) xs us
         with
         | _ -> ()))
 

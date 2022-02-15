@@ -147,7 +147,7 @@ let tasks =
       Model.
         { t_prep = t_preps.(n_time)
         ; x0
-        ; t_mov = 0.4
+        ; t_movs = [| 0.3 |]
         ; dt
         ; t_hold = Some 0.2
         ; t_pauses = None
