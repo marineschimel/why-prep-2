@@ -9,11 +9,18 @@ let n_prep_2 = t_prep_2 / 2
 
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let in_dir seed s = Printf.sprintf "%s/seed_%i/%s" dir seed s
-let in_double_dir seed s = Printf.sprintf "%s/seed_%i/adjusted_time_300_350_2/%s" dir seed s
-let proj_dir = "projs_300_350_2"
+let in_double_dir seed s = Printf.sprintf "%s/seed_%i/300_350/%s" dir seed s
+
+let superscript =  Cmdargs.(get_string "-superscript" |> default "")
+
+let proj_dir = Printf.sprintf "projs_300_350_%s" superscript
+
 let compound = Cmdargs.check "-compound"
-let in_compound_dir seed = Printf.sprintf "%s/seed_%i/adjusted_time/%s" dir seed
+
+let in_compound_dir seed = Printf.sprintf "%s/seed_%i/300_350_%s/%s" dir seed superscript 
+
 let saving_dir = if compound then in_compound_dir else in_double_dir
+
 let n_dim = 8
 let n_reaches = 7
 let n_var = 8
@@ -21,7 +28,7 @@ let dt = 2E-3
 let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 0 t_prep))
 
 let double_reach_0 =
-  Mat.load_txt (in_double_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 2 t_prep))
+  Mat.load_txt (in_double_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 3 t_prep))
   (* |> Mat.get_slice [ [ 0; size_double ] ] *)
 
 
@@ -42,25 +49,27 @@ let softmax x =
 (* let ls_double_reaches = [| 0, 0; 0, 1; 0, 2; 0, 3; 0, 4; 0, 5; 0, 6 |] *)
 let ls_double_reaches =
   [| (* 0, 1 *)
-     0, 2 (* ; 0, 3 *)
-   ; 0, 4
+     (* 0, 2  *)
+     0, 3 
+   (* ; 0, 4 *)
    ; 0, 5
    ; 0, 6
    ; 1, 0
    ; 1, 2 
-   ; 1, 5 
+   (* ; 1, 5  *)
    ; 1, 6
    ; 2, 1
    ; 2, 1
    ; 2, 3
    ; 2, 4
-   ; 2, 5
+   (* ; 2, 5 *)
    (* ; 2, 0 *)
    (* ; 3, 0 *)
+   (* ; 3, 1 *)
    ; 3, 2
    ; 3, 4
    ; 3, 5
-   ; 3, 6
+   ; 3, 6 
    ; 4, 2
    ; 4, 3 (* ; 4, 6 *)
    (* ; 5, 1 *)
@@ -70,9 +79,9 @@ let ls_double_reaches =
    ; 5, 4
    ; 5, 6
    ; 6, 0
-   ; 6, 1
-   (* ; 6, 2 *)
-   ; 6, 4
+   (* ; 6, 1 *)
+  ; 6, 2 
+   (* ; 6, 4 *)
   |]
 
 
@@ -194,7 +203,7 @@ let data_to_proj seed =
   let load i j =
     let m =
       Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" i j t_prep))
-      |> Mat.get_slice [ [ 0; size_double ] ]
+      |> Mat.get_slice [ [ 0; -1 ] ]
     in
     Arr.reshape m [| Mat.row_num m; -1; 1 |]
   in
@@ -314,14 +323,14 @@ let preprocessed_data seed =
   Mat.of_arrays (Arr.to_arrays dat)
 
 
-let seed = 1
+let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 
-let wp =
-  try Mat.load_txt (in_dir 1 (Printf.sprintf "%s/wpp" proj_dir)) with
+let wp, wm =
+  try Mat.load_txt (in_dir seed (Printf.sprintf "projs_300_350/wp")), Mat.load_txt (in_dir seed (Printf.sprintf "projs_300_350/wm")) with
   | _ ->
-    let wp, _ = ws seed in
-    Mat.save_txt ~out:(in_dir 1 (Printf.sprintf "%s/wp" proj_dir)) wp;
-    wp
+    let wp, wm = ws seed in
+    Mat.save_txt ~out:(in_dir seed (Printf.sprintf "projs_300_350/wp")) wp;  Mat.save_txt ~out:(in_dir seed (Printf.sprintf "projs_300_350/wm")) wm;
+    wp, wm
 
 
 let x_sub_prep_from_double =
@@ -350,8 +359,8 @@ let x_sub_prep_from_double =
 
 let occupancy seed =
   let double_reach_0 =
-    Mat.load_txt (saving_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 2 t_prep))
-    |> Mat.get_slice [ [ 0; size_double ] ]
+    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 3 t_prep))
+    |> Mat.get_slice [ [ 0; -1 ] ]
   in
   let double_duration = Mat.row_num double_reach_0 in
   let load i =
@@ -379,14 +388,14 @@ let occupancy seed =
 
 
 let _ =
-  let vprep = occupancy 1 in
-  Mat.save_txt ~out:(Printf.sprintf "%s/seed_1/%s/vprep" dir proj_dir) vprep
+  let vprep = occupancy seed in
+  Mat.save_txt ~out:(Printf.sprintf "%s/seed_%i/%s/vprep" dir seed proj_dir) vprep
 
 
 let proj2d =
   let double_reach_0 =
-    Mat.load_txt (saving_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 2 t_prep))
-    |> Mat.get_slice [ [ 0; size_double ] ]
+    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 3 t_prep))
+    |> Mat.get_slice [ [ 0; -1 ] ]
   in
   let double_duration = Mat.row_num double_reach_0 in
   let m = Arr.reshape (data_to_proj seed) [| -1; double_duration; 200 |] in
@@ -396,9 +405,12 @@ let proj2d =
       a
     in
     let proj_prep = proj x wp in
+    let proj_mov = proj x wm in
     Mat.save_txt
-      ~out:(Printf.sprintf "%s/seed_1/%s/proj_prep_%i" dir proj_dir i)
-      proj_prep
+      ~out:(Printf.sprintf "%s/seed_%i/%s/proj_prep_%i" dir seed proj_dir i)
+      proj_prep;   Mat.save_txt
+      ~out:(Printf.sprintf "%s/seed_%i/%s/proj_mov_%i" dir seed proj_dir i)
+      proj_mov
 
 
 let _ =
@@ -441,7 +453,7 @@ let _ =
       let m_doub = double_projs i in
       let m_sing = single_projs i in
       let conc = Mat.(transpose m_sing @|| transpose m_doub) in
-      Mat.save_txt ~out:(in_dir 1 (Printf.sprintf "%s/single_%i" proj_dir i)) m_sing;
-      Mat.save_txt ~out:(in_dir 1 (Printf.sprintf "%s/doub_%i" proj_dir i)) m_doub;
-      Mat.save_txt ~out:(in_dir 1 (Printf.sprintf "%s/conc_%i" proj_dir i)) conc)
+      Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/single_%i" proj_dir i)) m_sing;
+      Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/doub_%i" proj_dir i)) m_doub;
+      Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/conc_%i" proj_dir i)) conc)
     (Array.init n_reaches (fun i -> i))

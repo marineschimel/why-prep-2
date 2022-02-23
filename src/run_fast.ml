@@ -16,7 +16,7 @@ let t2 = Cmdargs.(get_float "-t2" |> force ~usage:"-t2")
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
-
+let pause = Cmdargs.(get_float "-pause" |> default 0.5)
 let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
 
@@ -91,8 +91,8 @@ let peak_speed i =
   max_speed
 
 
-let peak_peak_speeds = [| Array.init 7 ~f:peak_speed |] |> Mat.of_arrays |> Mat.max'
-
+(* let peak_peak_speeds = [| Array.init 7 ~f:peak_speed |] |> Mat.of_arrays |> Mat.max' *)
+(* 
 let get_time _tgt1 _tgt2 =
   let tgt1 = Arm.pack_state (AD.pack_arr _tgt1) in
   let tgt2 = Arm.pack_state (AD.pack_arr _tgt2) in
@@ -114,7 +114,7 @@ let get_time _tgt1 _tgt2 =
     ~peak_speed:(1.2 *. peak_peak_speeds)
     ~theta_0
     ~angle
-    ~length
+    ~length *)
 
 
 (*angle is in hand space (arctan ((y2-y1)/(x2-x1))) and
@@ -187,15 +187,15 @@ let tasks =
         let time = get_time ti tj in
         Mat.(ti @= tj), time
       in
-      let t_hold_2 = 0.5 -. time_snd +. 0.1 in
-      let _ = Stdio.printf "%f %!" time_snd in
+   
+ 
       Model.
         { t_prep = t_preps.(n_time)
         ; x0
         ; t_movs = [| t1; t2 |]
         ; dt
         ; t_hold = None
-        ; t_pauses = Some [| 0.5; 0.2 |]
+        ; t_pauses = Some [| pause; 0.2 |]
         ; scale_lambda = None
         ; target = AD.pack_arr double_target
         ; theta0

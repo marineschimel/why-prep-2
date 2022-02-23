@@ -4,6 +4,7 @@
   check
   gather
   run_noisy_baseline
+  run_baseline_random
   run_sparse_soc
   run_double
   analyses

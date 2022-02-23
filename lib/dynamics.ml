@@ -431,15 +431,13 @@ struct
       Linalg.D.(expm Mat.(AD.unpack_arr a *$ Float.(dt /. tau))) |> AD.pack_arr
     in
     (* let leak_discrete = AD.Maths.(exp (neg (F dt / F tau))) in *)
-    let b_discrete =
-      Linalg.D.(expm (AD.unpack_arr AD.Maths.(b * F dt / F tau))) |> AD.pack_arr
-    in
+
     fun ~k:_ ~x ~u ->
       let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
       let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
       let xst = AD.Maths.transpose xs in
       let s = Arm.pack_state thetas in
-      let next_x = AD.Maths.(phi_x (xs *@ a_discrete) + ((u + bias) *@ b * _dt)) in
+      let next_x = AD.Maths.(phi_x xs *@ a_discrete + ((u + bias) *@ b)) in
       let tau =
         let r = AD.Maths.(phi_x xst - (F 0. * phi_x (transpose x_init))) in
         AD.Maths.(c *@ r) |> AD.Maths.transpose

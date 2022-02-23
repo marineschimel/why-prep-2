@@ -694,3 +694,76 @@ struct
     in
     None
 end
+
+module Max_Occupancy (X : sig
+  val label : string
+  val wp : AD.t
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val d2_phi_x : AD.t -> AD.t
+end) =
+struct
+  module P = Owl_parameters.Make (Max_Occupancy_P)
+  open Max_Occupancy_P
+
+  let requires_linesearch = false
+  let label = X.label
+
+  let neg_logp_t ~readout ~prms ~task =
+    let n_prep = Float.to_int (task.t_prep /. task.dt) in
+    let n_1 = Float.to_int ((task.t_movs.(0) +. task.t_prep) /. task.dt) in
+    let pause_0 =
+      match task.t_pauses with
+      | Some t -> t.(0)
+      | None -> 0.
+    in
+    let n_2 = n_1 + Float.to_int (pause_0 /. task.dt) in
+    let n_3 = n_2 + Float.to_int (task.t_movs.(1) /. task.dt) in
+    let qs_coeff = Owl_parameters.extract prms.qs_coeff in
+    let g_coeff = Owl_parameters.extract prms.g_coeff in
+    let t_coeff = Owl_parameters.extract prms.t_coeff in
+    let prep_coeff = Owl_parameters.extract prms.prep_coeff in
+    let c = readout in
+    let c_t = AD.Maths.transpose c in
+    let tgt1 =
+      AD.Mat.row task.target 0 |> fun z -> AD.Maths.get_slice [ []; [ 0; 1 ] ] z
+    in
+    let tgt2 =
+      AD.Mat.row task.target 1 |> fun z -> AD.Maths.get_slice [ []; [ 0; 1 ] ] z
+    in
+    let dt = task.dt in
+    let _dt = AD.F dt in
+    let theta0 = task.theta0 in
+    let g_coeff_1 = AD.Maths.(g_coeff * F 0.2 / F pause_0) in
+    fun ~k ~z_t ->
+      let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] z_t in
+      let theta_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] thetas in
+      let theta_vel = AD.Maths.get_slice [ []; [ 2; 3 ] ] thetas in
+      let x_t = AD.Maths.get_slice [ []; [ 4; -1 ] ] z_t in
+      let x_t = AD.Maths.(X.phi_x x_t) in
+      if k < n_prep
+      then (
+        let mu_t = AD.Maths.(x_t *@ c_t) in
+        AD.Maths.(
+          (F 0.5 * sum' (t_coeff * sqr mu_t))
+          + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0))))
+      else if k > n_1 && k < n_2
+      then (
+        let proj_x_t = AD.Maths.(x_t *@ X.wp) in
+        AD.Maths.(
+          (F 0.5
+          * g_coeff_1
+          * (l2norm_sqr' (theta_pos - tgt1) + (F 0.1 * l2norm_sqr' theta_vel)))
+          + (F 0.5 * prep_coeff * l2norm_sqr' proj_x_t / (l2norm_sqr' x_t + F 1E-6))))
+      else if k > n_3
+      then
+        AD.Maths.(
+          F 0.5
+          * g_coeff
+          * (l2norm_sqr' (theta_pos - tgt2) + (F 0.1 * l2norm_sqr' theta_vel)))
+      else AD.F 0.
+
+
+  let neg_jac_t = None
+  let neg_hess_t = None
+end

@@ -30,3 +30,11 @@ module End_Phi (X : sig
   val d2_phi_x : AD.t -> AD.t
   val speed_end_penalty : float
 end) : Likelihood_T with type 'a P.prm = 'a End_Phi_P.prm
+
+module Max_Occupancy (X : sig
+  val label : string
+  val wp : AD.t
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val d2_phi_x : AD.t -> AD.t
+end) : Likelihood_T with type 'a P.prm = 'a Max_Occupancy_P.prm
