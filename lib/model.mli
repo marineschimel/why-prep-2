@@ -20,7 +20,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) : sig
     -> x0:AD.t
     -> prms:F.p
     -> task
-    -> AD.t * AD.t * AD.t
+    -> AD.t * AD.t * AD.t * bool
 
   val run : ustars:Mat.mat -> n:int -> m:int -> x0:AD.t -> prms:F.p -> task -> AD.t * AD.t
 
