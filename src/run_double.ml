@@ -14,15 +14,16 @@ let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which 
 let t1 = Cmdargs.(get_float "-t1" |> force ~usage:"-t1")
 let t2 = Cmdargs.(get_float "-t2" |> force ~usage:"-t2")
 let in_dir s = Printf.sprintf "%s/%s" dir s
+let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
 let pause = Cmdargs.(get_float "-pause" |> default 0.5)
+
 let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
-  
-let scale_mov =  Cmdargs.(get_float "-scale_mov" |> default 1.)
 
 
+let scale_mov = Cmdargs.(get_float "-scale_mov" |> default 1.)
 let rad = Cmdargs.(get_float "-rad" |> default 0.12)
 
 let targets =
@@ -123,8 +124,14 @@ let get_time _tgt1 _tgt2 =
 peak_speed is peak radial speed and length = *)
 
 let lambda_prep = lambda
-let lambda_mov = lambda*.scale_mov
-let _ = Mat.save_txt ~out:(in_dir (Printf.sprintf "%s/lambda" subdir)) (Mat.of_arrays [|[|lambda|]|])
+let lambda_mov = lambda *. scale_mov
+
+let _ =
+  Mat.save_txt
+    ~out:(in_dir (Printf.sprintf "%s/lambda" subdir))
+    (Mat.of_arrays [| [| lambda |] |])
+
+
 let n_out = 2
 let _n = 204
 let m = 200
@@ -139,7 +146,11 @@ let _ =
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 let t_preps = [| 0.5 |]
-let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec" data_dir)))
+
+let w =
+  C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)))
+
+
 let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir)))
 
 (* let c = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:0.003 2 m) *)
@@ -323,7 +334,6 @@ let _ =
 
 
 let _ = C.barrier ()
-
 
 (* open Owl
 module AD = Algodiff.D

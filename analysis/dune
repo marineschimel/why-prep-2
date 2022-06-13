@@ -1,15 +1,10 @@
 (executables
- (names analyze_inputs tests analysis_funs input_regression)
- (libraries
-  owl
-  owl-ode
-  owl-ode-sundials
-  cmdargs
-  owl-opt
-  owl-opt-lbfgs
-  arm
-  ilqr
-  lib
-  core)
+ (names
+  analyze_inputs
+  gather_accuracies
+  tests
+  analysis_funs
+  input_regression)
+ (libraries owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))

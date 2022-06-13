@@ -1,8 +1,27 @@
 (executables
  (names
   run_soc
+  loss_across
   check
   gather
+  eq_h2norm
+  follow_target
+  open_prms
+  run_chaotic_gated
+  run_ramping_small
+  run_chaotic_restarts
+  rerun_ramping
+  learn_w_torques
+  run_double_force_prep
+  projs
+  double_ramping
+  ramping_lowrank
+  run_ramping_tanh
+  run_ramping
+  low_rank_b
+  low_rank_summary
+  comp_networks
+  prioritize_prep
   run_noisy_baseline
   run_baseline_random
   run_sparse_soc
@@ -23,8 +42,11 @@
   gather_random_baselines
   run_soft_soc
   test_priors
+  run_chaotic
+  thetas_to_hands
   run_log_barrier
   diff_c
+  test_acquire_tgt
   run_soft_relu)
  (libraries accessor adam owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess

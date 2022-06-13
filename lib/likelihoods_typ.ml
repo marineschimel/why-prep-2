@@ -164,6 +164,7 @@ module Successive_Ramping_P = struct
     ; g_coeff : 'a
     ; tau_mov_1 : 'a
     ; tau_mov_2 : 'a
+    ; pause_coeff : 'a 
     }
   [@@deriving accessors ~submodule:A]
 
@@ -175,6 +176,7 @@ module Successive_Ramping_P = struct
     ; g_coeff = f x.g_coeff
     ; tau_mov_1 = f x.tau_mov_1
     ; tau_mov_2 = f x.tau_mov_2
+    ; pause_coeff = f x.pause_coeff 
     }
 
 

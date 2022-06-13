@@ -848,7 +848,8 @@ struct
         AD.Maths.(
           (F 0.5 * sum' (t_coeff * sqr mu_t))
           + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0))))
-      else    let t_diff = AD.Maths.(AD.F (Float.(of_int Int.((k - n_prep))*dt))) in  AD.Maths.(g_coeff * X.phi_t ((t_diff / tau_mov)) * l2norm_sqr' (theta_pos - target_pos) )
+      else  
+          let t_diff = AD.Maths.(AD.F (Float.(of_int Int.((k - n_prep))*dt))) in  AD.Maths.(g_coeff * X.phi_t ((t_diff / tau_mov)) * l2norm_sqr' (theta_pos - target_pos) )
         (* AD.Maths.(AD.F Float.of_int Int.(k - n_prep)
           * (l2norm_sqr' (theta_pos - target_pos) )) *)
 
@@ -890,6 +891,7 @@ struct
     let tau_mov_2 =  Owl_parameters.extract prms.tau_mov_2 in
     let g_coeff =  Owl_parameters.extract prms.g_coeff in
     let t_coeff = Owl_parameters.extract prms.t_coeff in
+    let pause_coeff = Owl_parameters.extract prms.pause_coeff in 
     let c = readout in
     let c_t = AD.Maths.transpose c in
     let tgt1 =
@@ -911,21 +913,22 @@ struct
       then 
         let mu_t = AD.Maths.(x_t *@ c_t) in
         AD.Maths.(
-          (F 0.5 * sum' (t_coeff * sqr mu_t) * dt)
-          + (F 0.5 * qs_coeff * dt * l2norm_sqr' (thetas - theta0)))
+          (F 0.5 * sum' (t_coeff * sqr mu_t))
+          + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0)))
       else
        if k < n_2
       then 
-        let t_diff_1 = AD.Maths.(AD.F (Float.(of_int Int.((k - n_1))*dt))) in 
+        let t_diff_1 = AD.Maths.(AD.F (Float.(dt* of_int Int.((k - n_1))))) in 
+      let force_pause = if k> n_1 then AD.Maths.(pause_coeff * l2norm_sqr' (theta_vel)) else AD.F 0. in   
         (AD.Maths.(
           F 0.5
-          * g_coeff * dt * X.phi_t ((t_diff_1 / tau_mov_1))
-          * (l2norm_sqr' (theta_pos - tgt1) )))
+          * g_coeff * (X.phi_t ((t_diff_1 / tau_mov_1))
+          * (l2norm_sqr' (theta_pos - tgt1) ) + force_pause)))
 else 
-  let t_diff_2 = AD.Maths.(AD.F (Float.(of_int Int.((k - n_2))*dt))) in 
+  let t_diff_2 = AD.Maths.(AD.F (Float.(dt*of_int Int.((k - n_2))))) in 
      AD.Maths.(
           F 0.5
-          * g_coeff * dt * X.phi_t ((t_diff_2 / tau_mov_2))
+          * g_coeff * X.phi_t ((t_diff_2 / tau_mov_2))
           * (l2norm_sqr' (theta_pos - tgt2) ))
 
 

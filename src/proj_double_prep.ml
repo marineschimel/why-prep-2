@@ -6,31 +6,32 @@ let _ = Printexc.record_backtrace true
 let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let t_prep_2 = Cmdargs.(get_int "-prep_2" |> default (t_prep + 800))
 let n_prep_2 = t_prep_2 / 2
-
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
-let in_dir seed s = Printf.sprintf "%s/seed_%i/%s" dir seed s
-let in_double_dir seed s = Printf.sprintf "%s/seed_%i/300_350/%s" dir seed s
-
-let superscript =  Cmdargs.(get_string "-superscript" |> default "")
-
-let proj_dir = Printf.sprintf "projs_300_350_%s" superscript
-
+let dir = "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/random_monkeys_random_lambda_2E-6/ramping/seed_5_200_2"
+let in_dir seed s = Printf.sprintf "%s/%s" dir s
+  (*Printf.sprintf "%s/seed_%i/%s" dir seed s*)
+let in_double_dir _seed s = Printf.sprintf "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/random_monkeys_random_lambda_2E-6/ramping/seed_5_200_2/double_ramping_1002002_pause_0.05_0._0.000002_300400/%s" s
+let superscript = Cmdargs.(get_string "-superscript" |> default "")
+let proj_dir = Printf.sprintf "single_projs_nopause%s" superscript
 let compound = Cmdargs.check "-compound"
-
-let in_compound_dir seed = Printf.sprintf "%s/seed_%i/300_350_%s/%s" dir seed superscript 
-
+let in_compound_dir _seed s = Printf.sprintf "/home/mmcs3/rds/rds-t2-cs133-hh9aMiOkJqI/mmcs3/random_monkeys_lambda_1E-6/double_ramping_short/%s" s
+  (* Printf.sprintf "%s/300_350%s" dir superscript *)
+let ws_dir = "analysis"
+(* let ws_dir = "double_projs_long" *)
 let saving_dir = if compound then in_compound_dir else in_double_dir
-
 let n_dim = 8
-let n_reaches = 7
 let n_var = 8
 let dt = 2E-3
-let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 0 t_prep))
+let n_neurons = 200
+
+let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
+
+let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 1 t_prep))
 
 let double_reach_0 =
-  Mat.load_txt (in_double_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 3 t_prep))
-  (* |> Mat.get_slice [ [ 0; size_double ] ] *)
+  Mat.load_txt (in_double_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 1 t_prep))
 
+(* |> Mat.get_slice [ [ 0; size_double ] ] *)
 
 let size_prep = 200
 let size_prep_2 = 100
@@ -48,42 +49,51 @@ let softmax x =
 
 (* let ls_double_reaches = [| 0, 0; 0, 1; 0, 2; 0, 3; 0, 4; 0, 5; 0, 6 |] *)
 let ls_double_reaches =
-  [| (* 0, 1 *)
-     (* 0, 2  *)
-     0, 3 
-   (* ; 0, 4 *)
+  [| 0, 1
+   ; 0, 2
+   ; 0, 4
    ; 0, 5
    ; 0, 6
    ; 1, 0
-   ; 1, 2 
-   (* ; 1, 5  *)
+   ; 1, 2
+   ; 1, 3
+   ; 1, 4
+   ; 1, 5
    ; 1, 6
-   ; 2, 1
    ; 2, 1
    ; 2, 3
    ; 2, 4
-   (* ; 2, 5 *)
-   (* ; 2, 0 *)
-   (* ; 3, 0 *)
-   (* ; 3, 1 *)
+   ; 2, 5
+   ; 2, 6
+   ; 2, 0
+   ; 3, 0
+   ; 3, 1
    ; 3, 2
    ; 3, 4
    ; 3, 5
-   ; 3, 6 
+   ; 3, 6
    ; 4, 2
-   ; 4, 3 (* ; 4, 6 *)
-   (* ; 5, 1 *)
-    (* ; 5, 0 *)
-   (* ; 5, 2 *)
-   ; 5, 3
+   ; 4, 1
+   ; 4, 3
+   ; 4, 5
+   ; 4, 6
+   ; 5, 1
+   ; 5, 0
+   ; 5, 2
    ; 5, 4
+   ; 5, 3
    ; 5, 6
    ; 6, 0
-   (* ; 6, 1 *)
-  ; 6, 2 
-   (* ; 6, 4 *)
+   ; 6, 1
+   ; 6, 2
+   ; 6, 3
+   ; 6, 4
+   ; 6, 5 (* ; 6, 4 *)
   |]
 
+let single_reaches = [|1;2;3;4;6|]
+
+let n_reaches = (Array.length single_reaches)
 
 let n_double_reaches = Array.length ls_double_reaches
 
@@ -93,7 +103,7 @@ let preprocessed_data seed =
     let ma = Mat.get_fancy [ R [ 0; duration - 1 ]; R [ 0; -1 ] ] m in
     Arr.reshape ma [| duration; -1; 1 |]
   in
-  let data = Array.init n_reaches (fun i -> load i) in
+  let data = Array.map (fun i -> load i) single_reaches in
   let concat_data = Arr.concatenate ~axis:0 data in
   let norm_factor =
     Mat.(max ~axis:0 concat_data - min ~axis:0 concat_data +$ (0.1 *. max' concat_data))
@@ -118,9 +128,20 @@ let get_double_data seed =
     in
     Arr.reshape m [| Mat.row_num m; -1; 1 |]
   in
-  let data = Array.map (fun (i, j) -> load i j) ls_double_reaches in
+  let data =
+    let open Base in
+    Array.fold ls_double_reaches ~init:[] ~f:(fun acc x ->
+        let i, j = x in
+        try
+          let m = load i j in
+          let new_acc = m :: acc in
+          new_acc
+        with
+        | _ -> acc)
+    |> Array.of_list
+  in
   let concat_data = Arr.concatenate ~axis:0 data in
-  let norm_factor =
+  let norm_factor = 
     Mat.(max ~axis:0 concat_data - min ~axis:0 concat_data +$ (0.1 *. max' concat_data))
     |> fun z -> Arr.reshape z [| 1; -1; 1 |]
   in
@@ -156,11 +177,8 @@ let x_mov_from_single seed =
 
 
 let x_prep_from_double seed =
-  let m =
-    Arr.reshape
-      (get_double_data seed)
-      [| Array.length ls_double_reaches; double_duration; -1 |]
-  in
+  let dat = get_double_data seed in
+  let m = Arr.reshape dat [| -1; double_duration;n_neurons |] in
   let f i =
     let p1 =
       Arr.reshape
@@ -174,15 +192,11 @@ let x_prep_from_double seed =
     in
     Arr.concatenate ~axis:0 [| p1; p2 |]
   in
-  Array.init n_double_reaches f |> Arr.concatenate ~axis:0
+  Array.init (Arr.shape m).(0) f |> Arr.concatenate ~axis:0
 
 
 let x_mov_from_double seed =
-  let m =
-    Arr.reshape
-      (get_double_data seed)
-      [| Array.length ls_double_reaches; double_duration; -1 |]
-  in
+  let m = Arr.reshape (get_double_data seed) [| -1; double_duration; n_neurons |] in
   let f i =
     let p1 =
       Arr.reshape
@@ -196,7 +210,7 @@ let x_mov_from_double seed =
     in
     Arr.concatenate ~axis:0 [| p1; p2 |]
   in
-  Array.init (Array.length ls_double_reaches) f |> Arr.concatenate ~axis:0
+  Array.init (Arr.shape m).(0) f |> Arr.concatenate ~axis:0
 
 
 let data_to_proj seed =
@@ -205,15 +219,28 @@ let data_to_proj seed =
       Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" i j t_prep))
       |> Mat.get_slice [ [ 0; -1 ] ]
     in
-    Arr.reshape m [| Mat.row_num m; -1; 1 |]
+    Arr.reshape m [| Mat.row_num m; -1 |]
   in
-  let data = Array.map (fun (i, j) -> load i j) ls_double_reaches in
-  let concat_data = Arr.concatenate ~axis:0 data in
+  let data =
+    let open Base in
+    Array.fold ls_double_reaches ~init:[] ~f:(fun acc x ->
+        let i, j = x in
+        try
+          let m = load i j in
+          let new_acc = m :: acc in
+          new_acc
+        with
+        | _ -> acc)
+    |> Array.of_list
+  in
+  let norm_data =  let concat_data = Arr.concatenate ~axis:0 data in  
   let norm_factor =
-    Mat.(max ~axis:0 concat_data - min ~axis:0 concat_data +$ (0.1 *. max' concat_data))
-    |> fun z -> Arr.reshape z [| 1; -1; 1 |]
-  in
-  let norm_data = Array.map (fun x -> Arr.(x / norm_factor)) data in
+    Mat.(max ~axis:0 concat_data - min ~axis:0 concat_data +$ (0.1 *. max' concat_data)) 
+    |> fun z -> Arr.reshape z [| 1; -1 |]
+  in 
+  let _ = Stdio.printf "shape : %i %i %i %i %!" (Arr.shape norm_factor).(0)  (Arr.shape norm_factor).(1) (Mat.row_num data.(0)) (Mat.col_num data.(0))
+in 
+Array.map (fun x -> Arr.(x / norm_factor) |> fun z ->  Arr.reshape z [| (Arr.shape z).(0); -1 ; 1 |]) data in 
   let mean_data = Arr.concatenate ~axis:2 norm_data |> Arr.mean ~axis:2 in
   let dat =
     let a =
@@ -306,7 +333,7 @@ let preprocessed_data seed =
     let ma = Mat.get_fancy [ R [ 0; duration - 1 ]; R [ 0; -1 ] ] m in
     Arr.reshape ma [| duration; -1; 1 |]
   in
-  let data = Array.init n_reaches (fun i -> load i) in
+  let data = Array.map (fun i -> load i) single_reaches in
   let concat_data = Arr.concatenate ~axis:0 data in
   let norm_factor =
     Mat.(max ~axis:0 concat_data - min ~axis:0 concat_data +$ (0.1 *. max' concat_data))
@@ -323,32 +350,37 @@ let preprocessed_data seed =
   Mat.of_arrays (Arr.to_arrays dat)
 
 
-let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 
 let wp, wm =
-  try Mat.load_txt (in_dir seed (Printf.sprintf "projs_300_350/wp")), Mat.load_txt (in_dir seed (Printf.sprintf "projs_300_350/wm")) with
+  try
+    ( Mat.load_txt (in_dir seed (Printf.sprintf "%s/wp" ws_dir))
+    , Mat.load_txt (in_dir seed (Printf.sprintf "%s/wm" ws_dir)) )
+  with
   | _ ->
     let wp, wm = ws seed in
-    Mat.save_txt ~out:(in_dir seed (Printf.sprintf "projs_300_350/wp")) wp;  Mat.save_txt ~out:(in_dir seed (Printf.sprintf "projs_300_350/wm")) wm;
+    Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/wp" ws_dir)) wp;
+    Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/wm" ws_dir)) wm;
     wp, wm
 
 
 let x_sub_prep_from_double =
   let open Base in
-  let m =
-    Arr.reshape (get_double_data seed) [| n_double_reaches; double_duration; -1 |]
-  in
+  let m = Arr.reshape (get_double_data seed) [| -1; double_duration; n_neurons |] in
   Array.init 6 ~f:(fun reach ->
       let ls =
         Array.foldi ls_double_reaches ~init:[] ~f:(fun j accu (n, i) ->
-            let x =
-              Arr.reshape
-                (Arr.get_slice [ [ j ]; [ n_prep - size_prep; n_prep - 1 ]; [] ] m)
-                [| size_prep; -1 |]
-            in
-            (* if n = reach && (Int.(n + i = 6) || (n = 3 && i = 2) || (n = 5 && i = 2))
-            then *)
-            x :: accu)
+            try
+              let x =
+                Arr.reshape
+                  (Arr.get_slice [ [ j ]; [ n_prep - size_prep; n_prep - 1 ]; [] ] m)
+                  [| size_prep; -1 |]
+                (* in
+              if n = reach && (Int.(n + i = 6) || (n = 3 && i = 2) || (n = 5 && i = 2)) *)
+                (* then x :: accu *)
+              in
+              x :: accu
+            with
+            | _ -> accu)
         (* else accu) *)
       in
       Mat.concatenate ~axis:0 (Array.of_list ls))
@@ -359,14 +391,14 @@ let x_sub_prep_from_double =
 
 let occupancy seed =
   let double_reach_0 =
-    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 3 t_prep))
+    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 1 t_prep))
     |> Mat.get_slice [ [ 0; -1 ] ]
   in
+  let dat = data_to_proj seed in
+  let n = (Arr.shape dat).(0) in
   let double_duration = Mat.row_num double_reach_0 in
   let load i =
-    Mat.get_slice
-      [ [ i * double_duration; ((i + 1) * double_duration) - 1 ]; [] ]
-      (data_to_proj seed)
+    Mat.get_slice [ [ i * double_duration; ((i + 1) * double_duration) - 1 ]; [] ] dat
   in
   let projections x =
     let rp = reconstructed (proj x wp) wp in
@@ -375,7 +407,7 @@ let occupancy seed =
   let rps =
     Arr.concatenate
       ~axis:2
-      (Array.init n_double_reaches (fun i ->
+      (Array.init (n / double_duration) (fun i ->
            let rp = projections (load i) in
            let m = Arr.reshape rp [| (Arr.shape rp).(0); (Arr.shape rp).(1); 1 |] in
            m))
@@ -384,21 +416,38 @@ let occupancy seed =
     let x = Arr.var ~axis:2 rps |> Arr.sum ~axis:1 |> Arr.to_array in
     Mat.of_array x (-1) 1
   in
-  Mat.(vprep /$ max' vprep)
+  let projections x =
+    let rm = reconstructed (proj x wm) wm in
+    rm
+  in
+  let rms =
+    Arr.concatenate
+      ~axis:2
+      (Array.init (n / double_duration) (fun i ->
+           let rp = projections (load i) in
+           let m = Arr.reshape rp [| (Arr.shape rp).(0); (Arr.shape rp).(1); 1 |] in
+           m))
+  in
+  let vmov =
+    let x = Arr.var ~axis:2 rms |> Arr.sum ~axis:1 |> Arr.to_array in
+    Mat.of_array x (-1) 1
+  in
+  Mat.(vmov /$ max' vmov), Mat.(vprep /$ max' vprep)
 
 
 let _ =
-  let vprep = occupancy seed in
-  Mat.save_txt ~out:(Printf.sprintf "%s/seed_%i/%s/vprep" dir seed proj_dir) vprep
+  let vmov, vprep = occupancy seed in
+  Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/vprep" proj_dir)) vprep;
+  Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/vmov" proj_dir)) vmov
 
 
 let proj2d =
   let double_reach_0 =
-    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 3 t_prep))
+    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 1 t_prep))
     |> Mat.get_slice [ [ 0; -1 ] ]
   in
   let double_duration = Mat.row_num double_reach_0 in
-  let m = Arr.reshape (data_to_proj seed) [| -1; double_duration; 200 |] in
+  let m = Arr.reshape (data_to_proj seed) [| -1; double_duration; n_neurons |] in
   fun i ->
     let x =
       let a = Arr.reshape (Arr.get_slice [ [ i ]; []; [] ] m) [| double_duration; -1 |] in
@@ -407,9 +456,10 @@ let proj2d =
     let proj_prep = proj x wp in
     let proj_mov = proj x wm in
     Mat.save_txt
-      ~out:(Printf.sprintf "%s/seed_%i/%s/proj_prep_%i" dir seed proj_dir i)
-      proj_prep;   Mat.save_txt
-      ~out:(Printf.sprintf "%s/seed_%i/%s/proj_mov_%i" dir seed proj_dir i)
+      ~out:(Printf.sprintf "%s/%s/proj_prep_%i" dir proj_dir i)
+      proj_prep;
+    Mat.save_txt
+      ~out:(Printf.sprintf "%s/%s/proj_mov_%i" dir proj_dir i)
       proj_mov
 
 
@@ -437,17 +487,20 @@ let single_projs reach =
 
 let double_projs reach =
   let open Base in
-  let m = Arr.reshape (get_double_data seed) [| n_double_reaches; -1; 200 |] in
+  let m = Arr.reshape (get_double_data seed) [| -1; double_duration; n_neurons |] in
   let ls =
     Array.foldi ls_double_reaches ~init:[] ~f:(fun j accu (n, _) ->
-        let x = Arr.reshape (Arr.get_slice [ [ j ]; [ n_prep ]; [] ] m) [| 1; -1 |] in
-        if n = reach then proj x wp :: accu else accu)
+        try
+          let x = Arr.reshape (Arr.get_slice [ [ j ]; [ n_prep ]; [] ] m) [| 1; -1 |] in
+          if n = reach then proj x wp :: accu else accu
+        with
+        | _ -> accu)
   in
   Mat.concatenate ~axis:0 (Array.of_list ls)
 
 
 (*rotate W : project the prep of single reaches and 7 double reaches onto it, then apply PCA to the N_d x (14xT) matrix and we get a matrix B by which we rotate Wp *)
-let _ =
+(* let _ =
   Array.iter
     (fun i ->
       let m_doub = double_projs i in
@@ -456,4 +509,4 @@ let _ =
       Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/single_%i" proj_dir i)) m_sing;
       Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/doub_%i" proj_dir i)) m_doub;
       Mat.save_txt ~out:(in_dir seed (Printf.sprintf "%s/conc_%i" proj_dir i)) conc)
-    (Array.init n_reaches (fun i -> i))
+    (Array.init (n_reaches) (fun i -> i))  *)

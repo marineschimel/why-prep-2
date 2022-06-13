@@ -28,7 +28,7 @@ module Gaussian = struct
     in
     fun ~k ~x:_ ~u ->
       let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
-      AD.Maths.(F 0.5 * (lam * l2norm_sqr' u) * dt)  
+      AD.Maths.(F 0.5 * (lam * l2norm_sqr' u))  
 
 
   let neg_jac_t =
@@ -45,7 +45,7 @@ module Gaussian = struct
       in
       fun ~k ~x:_ ~u ->
         let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
-        AD.Maths.(u * lam * dt)
+        AD.Maths.(u * lam)
     in
     Some _jac_t
 
@@ -67,7 +67,7 @@ module Gaussian = struct
       fun ~k ~x:_ ~u ->
         let m = AD.Mat.col_num u in
         let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
-        AD.Maths.(lam * AD.Mat.eye m * dt)
+        AD.Maths.(lam * AD.Mat.eye m)
     in
     Some _hess_t
 end

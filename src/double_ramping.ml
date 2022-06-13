@@ -22,6 +22,8 @@ let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
 let pause = Cmdargs.(get_float "-pause" |> default 0.5)
+let pause_coeff = Cmdargs.(get_float "-pause_coeff" |> default 1.)
+
 
 let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
@@ -133,6 +135,7 @@ what about one population receiving modulated inputs about the target?
 
 let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1))
 
+let x0 = C.broadcast' (fun () -> let m = Mat.load_txt (in_dir "rates_0_0") in AD.pack_arr ((Mat.get_slice [[0]] m) |> fun z -> Arr.reshape z [|-1;1|]))
 
 let baseline_input =
   C.broadcast' (fun () ->
@@ -160,7 +163,7 @@ let tasks =
         let tj = targets.(j) in
         Mat.(ti @= tj)
       in
-      Model.
+      k, j, Model.
         { t_prep = t_preps.(n_time)
         ; x0
         ; t_movs = [| t1; t2 |]
@@ -212,8 +215,9 @@ let prms =
           ; qs_coeff = (pinned : setter) (AD.F Float.(1.))
           ; t_coeff = (pinned : setter) (AD.F Float.(t_coeff))
           ; g_coeff = (pinned : setter) (AD.F Float.(1.))
-          ; tau_mov_1 = (pinned : setter) (AD.F Float.(tau_mov_1 *.0.001))
-          ; tau_mov_2 = (pinned : setter) (AD.F Float.(tau_mov_2 *.0.001))
+          ; tau_mov_1 = (pinned : setter) (AD.F Float.(tau_mov_1 *. 1E-3))
+          ; tau_mov_2 = (pinned : setter) (AD.F Float.(tau_mov_2 *. 1E-3))
+          ; pause_coeff = (pinned : setter) (AD.F pause_coeff)
           }
       in
       let dynamics =
@@ -225,8 +229,8 @@ let prms =
       in
       let prior =
         Priors.Gaussian_P.
-          { lambda_prep = (pinned : setter) (AD.F Float.(lambda_prep/. dt))
-          ; lambda_mov = (pinned : setter) (AD.F Float.(lambda_mov /. dt))
+          { lambda_prep = (pinned : setter) (AD.F Float.(lambda_prep))
+          ; lambda_mov = (pinned : setter) (AD.F Float.(lambda_mov))
           }
       in
       let readout = R.Readout_P.{ c = (pinned : setter) c } in
@@ -259,10 +263,26 @@ let save_results suffix xs us n_prep task =
     Mat.get_slice [ []; [ 0; 3 ] ] xs, Mat.get_slice [ []; [ 4; -1 ] ] xs, us
   in
   let x0 = Mat.get_slice [ []; [ 4; -1 ] ] (AD.unpack_arr x0) in
+  let _, _, input_cost_tot =
+  let f k u =
+    U.neg_logp_t
+      ~prms:prms.generative.prior
+      ~task
+      ~k
+      ~x:(AD.pack_arr u)
+      ~u:(AD.pack_arr u)
+  in
+  Analysis_funs.cost_u ~f:(fun k x -> AD.unpack_flt (f k x)) ~n_prep us in 
   let rates = AD.unpack_arr (link_f (AD.pack_arr xs)) in
   Owl.Mat.save_txt
-    ~out:(file "task_cost")
-    (Mat.of_array [| torque_err; target_err |] 1 (-1));
+      ~out:(file "u_cost")
+      (Mat.of_array [|input_cost_tot |] 1 (-1));
+    Owl.Mat.save_txt
+      ~out:(file "task_cost")
+      (Mat.of_array [| torque_err; target_err |] 1 (-1));
+    let hands = let h = AD.Mat.map_by_row (fun x -> Arm.unpack_state_diff (M.hand_of (Arm.pack_state x))) (AD.pack_arr thetas) in 
+      AD.unpack_arr h in 
+  Owl.Mat.save_txt ~out:(file "hands") hands;
   Owl.Mat.save_txt ~out:(file "thetas") thetas;
   Owl.Mat.save_txt ~out:(file "xs") xs;
   Owl.Mat.save_txt ~out:(file "us") us;
@@ -273,16 +293,13 @@ let save_results suffix xs us n_prep task =
     Mat.((rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
 
 
-let _ =
+let attempt_1 =
   let x0 = x0 in
   let _ = save_prms "" prms in
-  try
-    Array.iteri tasks ~f:(fun i t ->
+    Array.foldi tasks ~init:[] ~f:(fun i acc (k, j, t) ->
         if Int.(i % C.n_nodes = C.rank)
         then (
-          let k = i / (n_targets * Array.length t_preps) in
-          let next_i = Int.rem i (n_targets * Array.length t_preps) in
-          let j = next_i / Array.length t_preps in
+        try
           let t_prep = Float.to_int (1000. *. t.t_prep) in
           let xs, us, l, _ =
             I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
@@ -290,9 +307,19 @@ let _ =
           save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
           Mat.save_txt
             ~out:(in_dir (Printf.sprintf "loss_%i_%i_%i" k j t_prep))
-            (Mat.of_array [| AD.unpack_flt l |] 1 (-1))))
-  with
-  | _ -> ()
+            (Mat.of_array [| AD.unpack_flt l |] 1 (-1)); (true, (k,j,t))::acc
+        with |_ -> (false, (k, j, t))::acc) else acc) |> C.gather |> fun a -> C.broadcast' (fun () -> a |> Array.to_list |> List.concat |> Array.of_list)
 
+let _ =   Array.iteri attempt_1 ~f:(fun i (b, (k, j, t)) ->
+    if Int.(i % C.n_nodes = C.rank)
+    then (  if not b then 
+      let t_prep = Float.to_int (1000. *. t.t_prep) in
+      let xs, us, l, _ =
+        I.solve ~u_init:Mat.(gaussian ~sigma:0.0001 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
+      in
+      save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
+      Mat.save_txt
+        ~out:(in_dir (Printf.sprintf "loss_%i_%i_%i" k j t_prep))
+        (Mat.of_array [| AD.unpack_flt l |] 1 (-1))))
 
 let _ = C.barrier ()
