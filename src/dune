@@ -9,9 +9,10 @@
   open_prms
   run_chaotic_gated
   run_ramping_small
+  learn_lr
   run_chaotic_restarts
   rerun_ramping
-  learn_w_torques
+  test_fisher
   run_double_force_prep
   projs
   double_ramping

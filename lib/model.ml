@@ -162,17 +162,19 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
       in
       let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
+      let quus = IP.differentiable_quus ~theta:prms tau us in 
       ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
       , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
       , IP.differentiable_loss ~theta:prms tau
+      , quus
       , true )
     with
     | e ->
       Stdio.printf "%s %!" (Exn.to_string e);
-      AD.Mat.zeros 1 1, AD.Mat.zeros 1 1, AD.F (-444.), false
+      AD.Mat.zeros 1 1, AD.Mat.zeros 1 1, AD.F (-444.), List.init 1 ~f:(fun _ -> AD.Mat.zeros 1 1), false
 
   let run ~ustars ~n ~m ~x0 ~prms task =
-    let a, b, _, _ = solve ~u_init:ustars ~single_run:true ~n ~m ~x0 ~prms task in
+    let a, b, _, _, _ = solve ~u_init:ustars ~single_run:true ~n ~m ~x0 ~prms task in
     a, b
 
 

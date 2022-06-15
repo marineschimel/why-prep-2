@@ -10,14 +10,14 @@ let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let dir = "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/random_monkeys_random_lambda_2E-6/ramping/seed_5_200_2"
 let in_dir seed s = Printf.sprintf "%s/%s" dir s
   (*Printf.sprintf "%s/seed_%i/%s" dir seed s*)
-let in_double_dir _seed s = Printf.sprintf "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/random_monkeys_random_lambda_2E-6/ramping/seed_5_200_2/double_ramping_1002002_pause_0.05_0._0.000002_300400/%s" s
+let in_double_dir _seed s = Printf.sprintf "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/random_monkeys_random_lambda_2E-6/ramping/seed_5_200_2/double_ramping_1002002_pause_0._1._0.000002_300400/%s" s
 let superscript = Cmdargs.(get_string "-superscript" |> default "")
-let proj_dir = Printf.sprintf "single_projs_nopause%s" superscript
+let proj_dir = Printf.sprintf "double_projs%s" superscript
 let compound = Cmdargs.check "-compound"
 let in_compound_dir _seed s = Printf.sprintf "/home/mmcs3/rds/rds-t2-cs133-hh9aMiOkJqI/mmcs3/random_monkeys_lambda_1E-6/double_ramping_short/%s" s
   (* Printf.sprintf "%s/300_350%s" dir superscript *)
-let ws_dir = "analysis"
-(* let ws_dir = "double_projs_long" *)
+(* let ws_dir = "analysis" *)
+let ws_dir = "double_projs_long"
 let saving_dir = if compound then in_compound_dir else in_double_dir
 let n_dim = 8
 let n_var = 8
