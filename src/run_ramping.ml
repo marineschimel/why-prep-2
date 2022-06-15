@@ -344,8 +344,6 @@ let save_results suffix xs us n_target n_prep task =
         (-1)
     , true )
   in
-  if save_all
-  then (
     Owl.Mat.save_txt
       ~out:(file "u_cost")
       (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
@@ -369,25 +367,26 @@ let save_results suffix xs us n_target n_prep task =
     Owl.Mat.save_txt
       ~out:(file "torques")
       Mat.(
-        (rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c));
-    get_idx t_prep, n_target, summary)
-  else get_idx t_prep, n_target, summary
+        (rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
 
 
 
-let attempt_1 =
+
+let () =
   let x0 = x0 in
   let _ = save_prms "" prms in
-    Array.foldi tasks ~init:[] ~f:(fun i acc (n_target, t) ->
+    Array.iteri tasks ~f:(fun i (n_target, t) ->
         if Int.(i % C.n_nodes = C.rank)
         then (
         try
           let n_prep = Float.to_int (t.t_prep /. dt) in
           let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-          let xs, us, l, _ =
+          let xs, us, l, quus,_ =
             I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
           in
-          let idx, n_target, summary =
+          let tr_quus = List.map ~f:(fun x -> AD.unpack_arr x |> Mat.diag) quus |> Array.of_list |> fun z -> Mat.concatenate z in 
+          let test = Mat.save_txt ~out:"diag_quus" (tr_quus) in 
+          let () =
           save_results
             (Printf.sprintf "%i_%i" n_target t_prep_int)
             xs
@@ -402,24 +401,5 @@ let attempt_1 =
           Mat.save_txt
             ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
             (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-          save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t); (true, (n_target,t))::acc
-        with |_ ->  
-        let _ = Stdio.printf "fail %i" n_target in 
-        (false, (n_target, t))::acc) else acc) |> C.gather |> fun a -> C.broadcast' (fun () -> a |> Array.to_list |> List.concat |> Array.of_list)
-
-let _ =   Array.iteri attempt_1 ~f:(fun i (b, (n_target, t)) ->
-    if Int.(i % C.n_nodes = C.rank)
-    then (  if not b then 
-      let n_prep = Float.to_int (1000. *. t.t_prep /. dt) in
-      let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-      let xs, us, l, _ =
-        I.solve ~u_init:Mat.(gaussian ~sigma:0.0001 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
-      in
-      if save_all
-        then (
-          Mat.save_txt
-            ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
-            (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-          save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t)))
-
-      
+          save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t)
+        with |_ ->  Stdio.printf "fail %i" n_target))
