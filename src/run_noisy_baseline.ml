@@ -105,9 +105,9 @@ let tasks =
       (* let x0 = AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:20. m 1) in *)
       let n_target = Int.rem i n_targets in
       let t_hold = Stats.uniform_rvs ~a:0.15 ~b:0.3 in
-      let t_mov = Float.(0.4 +. 0.2 -. t_hold) in
+      let t_mov = Float.(0.3 +. 0.2 -. t_hold) in
       Model.
-        { t_prep = 0.5
+        { t_prep = 0.4
         ; x0 =
             AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0
             |> AD.Maths.transpose
@@ -285,7 +285,7 @@ let _ =
       if Int.(i % C.n_nodes = C.rank)
       then (
         (* try *)
-          let xs, us, _l =
+          let xs, us, _l, _ =
             I.solve
               ~u_init:Mat.(gaussian ~sigma:0. 2001 m)
               ~n:n

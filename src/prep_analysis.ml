@@ -7,12 +7,13 @@ let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let n_dim = 8
-let n_reaches = 8
+let reaches = [|1;2;3;4;6|]
+let n_reaches = (Array.length reaches)
 let n_var = 8
 let dt = 2E-3
-let reach_0 = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" 0 t_prep))
-let size_prep = 200
-let size_mov = 200
+let reach_0 = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" 1 t_prep))
+let size_prep = 100
+let size_mov = 100
 let duration = Mat.row_num reach_0
 let n_prep = float_of_int t_prep /. 1000. /. dt |> int_of_float
 
@@ -27,7 +28,7 @@ let preprocessed_data =
     let ma = Mat.get_fancy [ R [ 0; duration - 1 ]; R [ 0; -1 ] ] m in
     Arr.reshape ma [| duration; -1; 1 |]
   in
-  let data = Array.init n_reaches (fun i -> load i) in
+  let data = Array.map (fun i -> load i) reaches  in
   let concat_data = Arr.concatenate ~axis:0 data in
   let norm_factor =
     Mat.(max ~axis:0 concat_data - min ~axis:0 concat_data +$ (0.1 *. max' concat_data))
@@ -46,22 +47,23 @@ let preprocessed_data =
 
 let x_prep =
   let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
-  let f i =
+  let f i _ =
+    let _ = Stdio.printf "%i %i %i %i %i %i %!" n_prep size_prep (Array.length reaches) (Arr.shape m).(0) (Arr.shape m).(1) (Arr.shape m).(2) in
     Arr.reshape
       (Arr.get_slice [ [ i ]; [ n_prep - size_prep; n_prep - 1 ]; [] ] m)
       [| size_prep; -1 |]
   in
-  Array.init n_reaches f |> Arr.concatenate ~axis:0
+  Array.mapi f reaches |> Arr.concatenate ~axis:0
 
 
 let x_mov =
   let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
-  let f i =
+  let f i _ =
     Arr.reshape
       (Arr.get_slice [ [ i ]; [ n_prep + 25; n_prep + size_mov - 1 + 25 ]; [] ] m)
       [| size_mov; -1 |]
   in
-  Array.init n_reaches f |> Arr.concatenate ~axis:0
+  Array.mapi f reaches |> Arr.concatenate ~axis:0
 
 
 let n = Mat.col_num x_mov
@@ -94,7 +96,7 @@ let capt_var dim =
 (*this saves : var of prep in move subspace, var move in prep subspace, var prep in prep subspace, var move in move subspace
   for various dimensions*)
 let _ =
-  Array.init 9 (fun i -> capt_var i)
+  Array.map (fun i -> capt_var i) reaches 
   |> Mat.of_arrays
   |> Mat.save_txt ~out:(in_dir "analysis/capt_var")
 
@@ -176,6 +178,10 @@ let wp, wm =
   let _, new_wp, new_wm = learn in
   new_wp |> AD.unpack_arr, new_wm |> AD.unpack_arr
 
+let _ =
+  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/wp" )) wp;
+  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/wm" )) wm
+
 
 let proj x modes =
   (*x is T*N and modes is N*n_dim*)
@@ -195,11 +201,12 @@ let proj2d =
       a
     in
     let proj_prep = proj x wp in
+    let proj_mov = proj x wm in 
     Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/proj_prep_%i" i)) proj_prep;
     Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/proj_mov_%i" i)) proj_mov
 
 
-let _ = Array.init 8 (fun i -> proj2d i)
+let _ = Array.mapi (fun i _ -> proj2d i) reaches
 
 let captured_variance, top_mp, top_mv =
   let _mp, sp, _ = Linalg.D.svd (Mat.transpose x_prep) in
@@ -256,17 +263,17 @@ let occupancy =
   let rps =
     Arr.concatenate
       ~axis:2
-      (Array.init n_reaches (fun i ->
+      (Array.mapi (fun i _ ->
            let _, rp, _, _ = projections (load i) in
            let m = Arr.reshape rp [| (Arr.shape rp).(0); (Arr.shape rp).(1); 1 |] in
-           m))
+           m) reaches)
   and rms =
     Arr.concatenate
       ~axis:2
-      (Array.init n_reaches (fun i ->
+      (Array.mapi (fun i _ ->
            let _, _, rm, _ = projections (load i) in
            let m = Arr.reshape rm [| (Arr.shape rm).(0); (Arr.shape rm).(1); 1 |] in
-           m))
+           m) reaches)
   in
   let vprep, vmov =
     let x = Arr.var ~axis:2 rps |> Arr.sum ~axis:1 |> Arr.to_array in

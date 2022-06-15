@@ -3,6 +3,7 @@ open Owl
 include Dynamics_typ
 module AD = Algodiff.D
 
+
 module Integrate (D : Dynamics_T) = struct
   let integrate ~readout ~prms ~task =
     let dyn_k = D.dyn ~readout ~task ~theta:prms in
@@ -354,7 +355,7 @@ struct
         in
         AD.Maths.(transpose (mat * dt))
     in
-    Some _dyn_u
+   None
 end
 
 module Arm_Discrete (X : sig
@@ -519,4 +520,172 @@ struct
         AD.Maths.(transpose (mat * dt))
     in
     None
+end
+
+
+
+
+module Arm_Gated_Plus (X : sig
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val phi_u : AD.t -> AD.t
+  val d_phi_u : AD.t -> AD.t
+end) =
+struct
+  module P = Owl_parameters.Make (Arm_Plus_P)
+  open Arm_Plus_P
+  module M = Arm.Make (Arm.Defaults)
+  open X
+
+  let requires_linesearch = true
+
+  let minv ~x =
+    let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
+    let st = Arm.pack_state thetas in
+    AD.Linalg.linsolve (M.inertia st) (AD.Mat.eye 2)
+
+
+  let ms ~readout ~task ~prms:_ ~x =
+    let open AD.Maths in
+    let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
+    let x_init = task.x0 |> fun z -> AD.Maths.get_slice [ []; [ 4; -1 ] ] z in
+    let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
+    let st = Arm.pack_state thetas in
+    let s = Arm.pack_state thetas in
+    let c = readout in
+    let tau = AD.Maths.(c *@ transpose (phi_x xs - phi_x x_init)) |> AD.Maths.transpose in
+    let dotdot = M.theta_dot_dot s tau in
+    let dotdot1, dotdot2 = AD.Mat.get dotdot 0 0, AD.Mat.get dotdot 1 0 in
+    let m12 =
+      let cst1 = AD.F M._A2 * sin st.x2 * AD.F (-1.)
+      and cst2 = AD.F M._A2 * cos st.x2
+      and mat2 =
+        [| [| AD.F 0.; neg st.x2_dot * ((F 2. * st.x1_dot) + st.x2_dot) |]
+         ; [| AD.F 0.; sqr st.x1_dot |]
+        |]
+        |> of_arrays
+      and mat1 =
+        [| [| AD.F 0.; (F 2. * dotdot1) + dotdot2 |]; [| F 0.; dotdot1 |] |] |> of_arrays
+      in
+      (cst2 * mat2) + (cst1 * mat1)
+    in
+    let m22 =
+      let cst1 = F M._A2 * sin st.x2 in
+      let mat1 =
+        [| [| AD.F 2. * neg st.x2_dot; AD.F 2. * neg (st.x2_dot + st.x1_dot) |]
+         ; [| AD.F 2. * st.x1_dot; AD.F 0. |]
+        |]
+        |> of_arrays
+      in
+      (cst1 * mat1) + M._B
+    in
+    m12, m22
+
+
+  let dyn ~readout ~theta ~task =
+    let b = Owl_parameters.extract theta.b in
+    let c = readout in
+    let bias = Owl_parameters.extract theta.bias in
+    let tau = task.tau in
+    let a = Owl_parameters.extract theta.a in
+    let a = AD.Maths.(a / AD.F tau) in
+    let b = AD.Maths.(b / AD.F tau) in
+    let x_init = task.x0 |> fun z -> AD.Maths.get_slice [ []; [ 4; -1 ] ] z in
+    let t_prep = task.t_prep in
+    let dt = task.dt in
+    let n_prep = Float.to_int (t_prep /. dt) in
+    let _dt = AD.F dt in
+    fun ~k ~x ~u ->
+      let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
+      let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
+      let xst = AD.Maths.transpose xs in
+      let s = Arm.pack_state thetas in
+      let dx =
+        AD.Maths.(((phi_x xs *@ a) - (xs / AD.F tau) + (phi_u (u + bias) *@ b)) * _dt)
+      in
+      let tau =
+        let r = AD.Maths.(phi_x xst) in
+        if k < n_prep then AD.Maths.(F 0. * c *@ r) |> AD.Maths.transpose 
+        else AD.Maths.(c *@ r) |> AD.Maths.transpose
+      in
+      (*Mat.save_txt
+          ~out:
+            (Printf.sprintf "/rds/user/mmcs3/hpc-work/_results/why_prep/checks_2/s_%i" k)
+          (AD.unpack_arr (AD.Maths.of_arrays [| [| s.x1_dot; s.x2_dot; s.x1; s.x2 |] |])) *)
+      let dotdot = M.theta_dot_dot s tau in
+      let new_thetas =
+        AD.Maths.(
+          of_arrays
+            [| [| s.x1 + (_dt * s.x1_dot)
+                ; s.x2 + (_dt * s.x2_dot)
+                ; s.x1_dot + (_dt * AD.Maths.get_item dotdot 0 0)
+                ; s.x2_dot + (_dt * AD.Maths.get_item dotdot 1 0)
+               |]
+            |])
+      and new_x = AD.Maths.(xs + dx) in
+      AD.Maths.(concatenate ~axis:1 [| new_thetas; new_x |])
+
+
+  let dyn_x =
+    None
+
+
+  let dyn_u =
+    let _dyn_u ~readout:_ ~theta ~task =
+      let b = Owl_parameters.extract theta.b in
+      let bias = Owl_parameters.extract theta.bias in
+      let m = AD.Mat.col_num b in
+      let dt = AD.F task.dt in
+      let tau = task.tau in
+      let b = AD.Maths.(b / AD.F tau) in
+      fun ~k:_ ~x:_ ~u ->
+        let mat =
+          AD.Maths.concatenate
+            ~axis:0
+            [| AD.Mat.zeros 2 m; AD.Mat.zeros 2 m; AD.Maths.(d_phi_u (u + bias) *@ b) |]
+        in
+        AD.Maths.(transpose (mat * dt))
+    in
+    Some _dyn_u
+end
+
+
+
+module Nonlinear (X : sig
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val phi_u : AD.t -> AD.t
+  val d_phi_u : AD.t -> AD.t
+end) =
+struct
+  module P = Owl_parameters.Make (Arm_Plus_P)
+  open Arm_Plus_P
+  open X
+
+  let requires_linesearch = true
+
+  let dyn ~readout ~theta ~task =
+    let b = Owl_parameters.extract theta.b in
+    let c = readout in
+    let bias = Owl_parameters.extract theta.bias in
+    let tau = task.tau in
+    let a = Owl_parameters.extract theta.a in
+    let a = AD.Maths.(a / AD.F tau) in
+    let b = AD.Maths.(b / AD.F tau) in
+    let dt = task.dt in
+    let _dt = AD.F dt in
+    fun ~k:_ ~x ~u ->
+      let dx =
+        AD.Maths.(((phi_x x *@ a) - (x / AD.F tau) + (phi_u (u + bias) *@ b)) * _dt)
+      in
+      let new_x = AD.Maths.(x + dx) in
+      new_x
+
+
+  let dyn_x =
+    None
+
+
+  let dyn_u =
+   None
 end

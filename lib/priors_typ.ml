@@ -87,3 +87,21 @@ module Student_P = struct
     let init = f init (x.spatial_stds, with_prefix ?prefix "spatial_stds") in
     f init (x.nu, with_prefix ?prefix "nu")
 end
+
+
+module Gaussian_B_P = struct
+  type 'a prm =
+    { b : 'a
+    ; lambda_prep : 'a
+    ; lambda_mov : 'a
+    }
+  [@@deriving accessors ~submodule:A]
+
+  (* first bin has the interpretation of a rescaling of the std, not the variance *)
+  let map ~f x = { b = f x.b; lambda_prep = f x.lambda_prep; lambda_mov = f x.lambda_mov }
+
+  let fold ?prefix ~init ~f x =
+    let init = f init (x.lambda_prep, with_prefix ?prefix "lambda_prep") in
+    let init = f init (x.b, with_prefix ?prefix "b") in
+    f init (x.lambda_mov, with_prefix ?prefix "lambda_mov")
+end

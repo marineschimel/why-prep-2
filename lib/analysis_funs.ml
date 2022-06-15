@@ -10,7 +10,7 @@ let max_speed x =
   Mat.max' speed
 
 
-let time_to_end x target_hands =
+let time_to_end x target_hands n_prep =
   let target_pos = Mat.get_fancy [ R [ 0; -1 ]; L [ 0; 2 ] ] target_hands in
   let idces =
     Mat.filter_rows
@@ -19,7 +19,11 @@ let time_to_end x target_hands =
         Mat.(l2norm' (x_pos - target_pos)) < 0.01)
       x
   in
-  try let i = idces.(0) in i with |_ -> -100
+  try
+    let i = idces.(0) - n_prep in
+    i
+  with
+  | _ -> -100
 
 
 let get_final_pos x =
@@ -30,16 +34,22 @@ let get_final_pos x =
 let cost_u ~f ~n_prep x =
   let arr = Mat.mapi_rows f x in
   let mat = Mat.of_array arr (-1) 1 in
-  ( Mat.sum' (Mat.get_slice [ [ 0; n_prep - 1 ] ] mat)
-  , Mat.sum' (Mat.get_slice [ [ n_prep; -1 ] ] mat)
-  , Mat.sum' mat )
+  if n_prep = 0
+  then 0., Mat.sum' mat, Mat.sum' mat
+  else
+    ( Mat.sum' (Mat.get_slice [ [ 0; n_prep - 1 ] ] mat)
+    , Mat.sum' (Mat.get_slice [ [ n_prep; -1 ] ] mat)
+    , Mat.sum' mat )
 
 
 let cost_x ~f ~n_prep x =
   let arr = Mat.mapi_rows f x in
   let mat = Mat.of_array arr (-1) 1 in
-  ( Mat.sum' (Mat.get_slice [ [ 0; n_prep - 1 ] ] mat)
-  , Mat.sum' (Mat.get_slice [ [ n_prep; -1 ] ] mat) )
+  if n_prep = 0
+  then 0., Mat.sum' mat
+  else
+    ( Mat.sum' (Mat.get_slice [ [ 0; n_prep - 1 ] ] mat)
+    , Mat.sum' (Mat.get_slice [ [ n_prep; -1 ] ] mat) )
 
 
 let energies ~t_prep ~dt e =

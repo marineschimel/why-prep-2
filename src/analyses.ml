@@ -4,7 +4,7 @@ let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let in_dir s = Printf.sprintf "%s/%s" dir s
 
 let ls_double_reaches =
-  [| 0, 2
+  [| 0, 3
    ; 0, 4
    ; 0, 5
    ; 1, 2
@@ -14,8 +14,6 @@ let ls_double_reaches =
    ; 2, 4
    ; 2, 5
    ; 3, 2
-   ; 3, 4
-   ; 3, 5
    ; 4, 2
    ; 4, 3
    ; 4, 6
@@ -23,7 +21,6 @@ let ls_double_reaches =
    ; 5, 2
    ; 5, 3
    ; 5, 4
-   ; 5, 6
    ; 6, 0
    ; 6, 1
    ; 6, 2

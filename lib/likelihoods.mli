@@ -38,3 +38,23 @@ module Max_Occupancy (X : sig
   val d_phi_x : AD.t -> AD.t
   val d2_phi_x : AD.t -> AD.t
 end) : Likelihood_T with type 'a P.prm = 'a Max_Occupancy_P.prm
+
+module Acquired_Phi (X : sig
+  val label : string
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val d2_phi_x : AD.t -> AD.t
+  val speed_end_penalty : float
+end) : Likelihood_T with type 'a P.prm = 'a Acquired_Phi_P.prm
+
+module Ramping (X : sig
+  val label : string
+  val phi_x : AD.t -> AD.t
+  val phi_t : AD.t -> AD.t
+end) : Likelihood_T with type 'a P.prm = 'a Ramping_P.prm
+
+module Successive_Ramping (X : sig
+  val label : string
+  val phi_x : AD.t -> AD.t
+  val phi_t : AD.t -> AD.t
+end) : Likelihood_T with type 'a P.prm = 'a Successive_Ramping_P.prm

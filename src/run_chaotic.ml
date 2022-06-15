@@ -3,6 +3,7 @@ module AD = Algodiff.D
 module M = Arm.Make (Arm.Defaults)
 open Lib
 open Base
+open Accessor.O
 
 (* Setting up the parameters/directories
 *)
@@ -20,6 +21,7 @@ let lambda =
 
 
 let perturb = Cmdargs.(check "-perturb")
+let annealing = Cmdargs.(check "-annealing")
 let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.05)
 let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
 let amp = Cmdargs.(get_float "-amp" |> default 1.)
@@ -298,50 +300,81 @@ let save_results suffix xs us n_target n_prep task =
     get_idx t_prep, n_target, summary)
   else get_idx t_prep, n_target, summary
 
+let init_us = Array.init (Array.length tasks) ~f:(fun _ -> Mat.(gaussian ~sigma:0. 2001 m))
 
-(*one for each target/prep time
-also want to save the total prep index + loss ratio for 0/500 and max eig and rad there*)
-let summaries, try_tasks =
-  let x0 = x0 in
-  let _ = save_prms "" prms in
-  Array.foldi tasks ~init:([], []) ~f:(fun i accu t ->
-      let accu1, accu2 = accu in
+let prep_initial_conditions = if annealing then 
+  let open Model in
+  let open Full_P.A in
+  let open Generative_P.A in
+  let open Owl_parameters in
+  let open Dynamics_typ in 
+  let init_w = Owl_parameters.extract prms.generative.dynamics.a in 
+  let rescaled_prms = Accessor.map
+  (generative @> dynamics @> Dynamics.Arm_Plus_P.A.a)
+  ~f:(fun _ -> (pinned : setter) (AD.Maths.(init_w /F 5.))) prms in 
+  Array.foldi tasks ~init:([]) ~f:(fun i accu t ->
       if Int.(i % C.n_nodes = C.rank)
       then (
         let n_target = Int.rem i n_targets in
         let n_prep = Float.to_int (t.t_prep /. dt) in
         let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-        let _ = Stdio.printf "try tasks" in
+        let _ = Stdio.printf "trying weak rad" in
         let xs, us, l, success =
-          I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
+          I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms:rescaled_prms t
         in
-        let idx, n_target, summary =
-          save_results
-            (Printf.sprintf "%i_%i" n_target t_prep_int)
-            xs
-            us
-            n_target
-            n_prep
-            t
-        in
-        if save_all
-        then (
-          Mat.save_txt
-            ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
-            (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-          save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t);
-        if success then (idx, n_target, summary) :: accu1, accu2 else accu1, t :: accu2)
+        if success then (i, AD.unpack_arr us) :: accu else accu)
       else accu)
   |> C.gather
   |> fun v ->
-  C.broadcast' (fun () ->
-      let v1 = Array.map ~f:fst v in
-      let v2 = Array.map ~f:snd v in
-      ( v1 |> Array.to_list |> List.concat |> Array.of_list
-      , v2 |> Array.to_list |> List.concat |> Array.of_list ))
+      C.root_perform (fun () -> 
+      let us = v |> Array.to_list |> List.concat |> Array.of_list
+  in Array.iter us ~f:(fun (i, us) -> init_us.(i) <- us))
+
+let full_tasks = C.broadcast' (fun () -> 
+  Array.init (Array.length tasks) ~f:(fun i -> tasks.(i), 
+  init_us.(i)))
+
+let _ = Stdio.printf "ran the u initialization %!"
 
 
-let _ = Stdio.printf "ran the summaries %!"
+let summaries, try_tasks =
+let x0 = x0 in
+let _ = save_prms "" prms in
+Array.foldi full_tasks ~init:([], []) ~f:(fun i accu t ->
+    let accu1, accu2 = accu in
+    if Int.(i % (C.n_nodes) = C.rank)
+    then (
+    let t, u0 = t in 
+      let n_target = Int.rem i n_targets in
+      let n_prep = Float.to_int (t.t_prep /. dt) in
+      let t_prep_int = Float.to_int (1000. *. t.t_prep) in
+      let xs, us, l, success =
+        I.solve ~u_init:u0 ~n:(m + 4) ~m ~x0 ~prms t
+      in
+      let idx, n_target, summary =
+        save_results
+          (Printf.sprintf "%i_%i" n_target t_prep_int)
+          xs
+          us
+          n_target
+          n_prep
+          t
+      in
+      if save_all
+      then (
+        Mat.save_txt
+          ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
+          (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
+        save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t);
+      if success then (idx, n_target, summary) :: accu1, accu2 else accu1, t :: accu2)
+    else accu)
+|> C.gather
+|> fun v ->
+C.broadcast' (fun () ->
+    let v1 = Array.map ~f:fst v in
+    let v2 = Array.map ~f:snd v in
+    ( v1 |> Array.to_list |> List.concat |> Array.of_list
+    , v2 |> Array.to_list |> List.concat |> Array.of_list ))
 
 let save_summaries =
   C.root_perform (fun () ->
@@ -349,61 +382,6 @@ let save_summaries =
 
 
 let _ = Stdio.printf "saved the summaries so far %!"
-
-let reran_summaries, more_saving =
-  if not (Array.is_empty try_tasks)
-  then (
-    try
-      Array.foldi try_tasks ~init:([], []) ~f:(fun i (accu1, accu2) t ->
-          if Int.(i % C.n_nodes = C.rank)
-          then (
-            let n_target = Int.rem i n_targets in
-            let n_prep = Float.to_int (1000. *. t.t_prep /. dt) in
-            let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-            let xs, us, l, success =
-              I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
-            in
-            let idx, n_target, summary =
-              save_results
-                (Printf.sprintf "%i_%i" n_target t_prep_int)
-                xs
-                us
-                n_target
-                n_prep
-                t
-            in
-            Mat.save_txt
-              ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
-              (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-            save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t;
-            let m =
-              Mat.of_array [| Float.of_int n_target; Float.of_int t_prep_int |] 1 (-1)
-            in
-            if success
-            then (idx, n_target, summary) :: accu1, accu2
-            else accu1, t :: accu2)
-          else accu1, accu2)
-      |> C.gather
-      |> fun v ->
-      ( C.broadcast' (fun () ->
-            let v1 = Array.map ~f:fst v in
-            v1 |> Array.to_list |> List.concat |> Array.of_list)
-      , true )
-    with
-    | _ ->
-      C.broadcast' (fun () ->
-          Array.init 1 ~f:(fun _ -> 1, 1, (Mat.zeros 1 1, true)), false))
-  else
-    C.broadcast' (fun () -> Array.init 1 ~f:(fun _ -> 1, 1, (Mat.zeros 1 1, true)), false)
-
-
-let _ = Stdio.printf "saving summaries 2 %!"
-
-let _ =
-  if more_saving
-  then
-    C.root_perform (fun () ->
-        Array.iter reran_summaries ~f:(fun (i, n, s) -> summary_tasks.(i).(n) <- s))
 
 
 let final_save =
