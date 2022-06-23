@@ -157,7 +157,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
       | Some us ->
         List.init M.n_steps ~f:(fun k -> AD.pack_arr (Mat.get_slice [ [ k ] ] us))
     in
-    (* try *)
+    try
       let tau =
         IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
       in
