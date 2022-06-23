@@ -30,7 +30,7 @@ let triang = Cmdargs.(check "-triang")
 let lr = Cmdargs.(check "-lr")
 let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.5)
 let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
-let tau_mov = Cmdargs.(get_float "-tau_mov" |> force ~usage:"tau_mov")
+let tau_mov = Cmdargs.(get_float "-tau_mov" |> default 600.)
 let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.)
 let exponent = Cmdargs.(get_int "-exponent" |> force ~usage:"exponent")
 let seed = Cmdargs.(get_int "-seed" |> default 1)
@@ -101,7 +101,7 @@ let _ =
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 
 
-let t_preps = [|0.;0.05;0.1;0.3;0.5;0.7;0.8;1.0|]
+let t_preps = [|0.; 0.025; 0.05;0.07; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0.8; 0.9; 1.0|]
 
 let w =
   C.broadcast' (fun () ->
@@ -247,8 +247,10 @@ module L0 = Likelihoods.Ramping (struct
   let phi_t t = phi_t t
 end)
 
+let t_tot = 0.6
 module R = Readout
 
+let dt_scaling = Float.(dt/.1E-3 *. 100.)
 let prms =
   let open Owl_parameters in
   C.broadcast' (fun () ->
@@ -256,10 +258,10 @@ let prms =
         Likelihoods.Ramping_P.
           { c = (pinned : setter) c
           ; c_mask = None
-          ; qs_coeff = (pinned : setter) (AD.F 1.)
-          ; t_coeff = (pinned : setter) (AD.F t_coeff)
-          ; g_coeff = (pinned : setter) (AD.F 1.)
-          ; tau_mov = (pinned : setter) (AD.F Float.(0.001*.tau_mov))
+          ; qs_coeff = (pinned : setter) (AD.F Float.( dt_scaling))
+          ; t_coeff = (pinned : setter) (AD.F Float.(t_coeff *. dt_scaling))
+          ; g_coeff = (pinned : setter) (AD.F Float.(dt_scaling))
+          ; tau_mov = (pinned : setter) (AD.F Float.(t_tot))
           }
       in
       let dynamics =
@@ -271,8 +273,8 @@ let prms =
       in
       let prior =
         Priors.Gaussian_P.
-          { lambda_prep = (pinned : setter) (AD.F lambda_prep)
-          ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
+          { lambda_prep = (pinned : setter) (AD.F Float.(lambda_prep*.dt_scaling))
+          ; lambda_mov = (pinned : setter) (AD.F Float.(lambda_mov*.dt_scaling))
           }
       in
       let readout = R.Readout_P.{ c = (pinned : setter) c } in
@@ -293,11 +295,12 @@ let get_idx t =
   idx
 
 
-let save_results suffix xs us n_target n_prep task =
+let save_results suffix xs us quus n_target n_prep task =
   let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
   let _ = Stdio.printf "nprep is %i %!" n_prep in
   let xs = AD.unpack_arr xs in
   let us = AD.unpack_arr us in
+  let _ = Stdio.printf "%i %i %!" (Mat.row_num xs) (Mat.col_num xs) in 
   let torque_err, target_err =
     Analysis_funs.cost_x
       ~f:(fun k x ->
@@ -337,6 +340,7 @@ let save_results suffix xs us n_target n_prep task =
   let loss = torque_err +. target_err +. input_cost_tot in
   let prep_idx = ue_prep /. ue_mov in
   let ratio_u_cost = input_cost_prep /. input_cost_mov in
+  let tr_quus = List.map ~f:(fun x -> AD.unpack_arr x |> Mat.diag) quus |> Array.of_list |> fun z -> Mat.concatenate z in 
   let summary =
     ( Mat.of_array
         [| t_prep; prep_idx; loss; input_cost_tot; torque_err; target_err; ratio_u_cost |]
@@ -344,6 +348,9 @@ let save_results suffix xs us n_target n_prep task =
         (-1)
     , true )
   in
+  Owl.Mat.save_txt
+  ~out:(file "quus")
+  (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
     Owl.Mat.save_txt
       ~out:(file "u_cost")
       (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
@@ -384,13 +391,11 @@ let () =
           let xs, us, l, quus,_ =
             I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
           in
-          let tr_quus = List.map ~f:(fun x -> AD.unpack_arr x |> Mat.diag) quus |> Array.of_list |> fun z -> Mat.concatenate z in 
-          let test = Mat.save_txt ~out:"diag_quus" (tr_quus) in 
           let () =
           save_results
             (Printf.sprintf "%i_%i" n_target t_prep_int)
             xs
-            us
+            us quus
             n_target
             n_prep
             t
