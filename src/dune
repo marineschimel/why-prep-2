@@ -5,8 +5,13 @@
   check
   gather
   eq_h2norm
+  sample_2d
+  analysis_potency
+  alignment
+  run_ramping_lin_cs
   follow_target
   potency
+  run_2d
   open_prms
   run_chaotic_gated
   run_ramping_small

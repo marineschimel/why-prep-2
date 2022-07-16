@@ -5,9 +5,9 @@ open Base
 
 (* /home/mmcs3/rds/hpc-work/_results/why_prep/results/uniform_1E-6/soc/seed_9 *)
 let _ = Printexc.record_backtrace true
-let times = [| 0; 50; 300; 500|]
+let times = [| 0; 50; 100;  300; 500; 800|]
  (* 500 ; 600 |] *)
-let n_reaches = 6
+let n_reaches = 8
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let in_dir s = Printf.sprintf "%s/%s" dir s
@@ -64,8 +64,8 @@ let data_mov =
   in
   Array.init n_reaches f |> Arr.concatenate ~axis:0
 
-let data =
-  let m = Arr.reshape (snd (preprocessed_data t_prep)) [| n_reaches; duration t_prep; -1 |] in
+let data t =
+  let m = Arr.reshape (snd (preprocessed_data t)) [| n_reaches; duration t; -1 |] in
   let f i =
     Arr.reshape
       (Arr.get_slice [ [ i ]; [ ]; [] ] m)
@@ -73,7 +73,10 @@ let data =
   in
   Array.init n_reaches f |> Arr.concatenate ~axis:0
 
-let top_pc, _, _ = Linalg.D.svd Mat.(transpose (data - mean ~axis:0 data))
+let all_data = data t_prep
+  (* Array.map times (fun t -> data t) |> Arr.concatenate ~axis:0 *)
+
+let top_pc, _, _ = Linalg.D.svd Mat.(transpose (all_data - mean ~axis:0 all_data))
 let top_pc_mov, _, _ = Linalg.D.svd Mat.(transpose (data_mov - mean ~axis:0 data_mov))
 let top_pc_prep, _, _ = Linalg.D.svd Mat.(transpose (data_prep - mean ~axis:0 data_prep))
 

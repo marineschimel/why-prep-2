@@ -30,10 +30,10 @@ let triang = Cmdargs.(check "-triang")
 let lr = Cmdargs.(check "-lr")
 let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.5)
 let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
-let tau_mov = Cmdargs.(get_float "-tau_mov" |> default 600.)
+let tau_mov = Cmdargs.(get_float "-tau_mov" |> force ~usage:"tau_mov")
 let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.)
 let exponent = Cmdargs.(get_int "-exponent" |> force ~usage:"exponent")
-let seed = Cmdargs.(get_int "-seed" |> default 1)
+let seed = Cmdargs.(get_string "-seed" |> default "1")
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
@@ -68,19 +68,9 @@ let _ =
 let beta = AD.F 1E-2
 let exponent = AD.F (Float.of_int exponent)
 let phi_t t = AD.Maths.(t ** exponent)
-(* let phi_x x = x
-let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
-let d2_phi_x x = AD.Maths.(diagm (F 0. * x)) *)
-let _ = if nonlin == "tanh" then Stdio.printf "tanh nonlinearity"
-let phi_x x = if nonlin == "tanh" then  AD.Maths.(F 5. * tanh x) else AD.Maths.relu x
-let d_phi_x x = if nonlin == "tanh" then  AD.Maths.(F 5. * (F 1. - F 2. * (sqr (tanh x)))) else AD.Maths.(F 0.5 * (F 1. + signum x))
-let d2_phi_x x = if nonlin == "tanh" then AD.Maths.(F (-10.) * tanh x * (d_phi_x x)) else AD.Maths.(diagm (F 0. * x))
-(* let phi_x x = AD.Maths.(F 5. * tanh x)
-let d_phi_x x = AD.Maths.(F 5. * (F 1. - F 2. * (sqr (tanh x))))
-let d2_phi_x x = AD.Maths.(F (-10.) * tanh x * (d_phi_x x)) *)
-(* let phi_x x = AD.Maths.(beta * AD.requad (x / beta))
-let d_phi_x x = AD.Maths.(AD.d_requad (x / beta))
-let d2_phi_x x = AD.Maths.(F 1. / beta * AD.d2_requad (x / beta)) *)
+let phi_x x = x
+let d_phi_x x =  AD.Maths.(F 0. * x + F 1.)
+let d2_phi_x x = AD.Maths.(diagm (F 0. * x))
 let link_f x = phi_x x
 let target i = targets.(i)
 let dt = 2E-3
@@ -105,7 +95,7 @@ let t_preps = [|0.; 0.025; 0.05;0.07; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0
 
 let w =
   C.broadcast' (fun () ->
-    if soc then Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed))
+    if soc then Mat.(load_txt (Printf.sprintf "%s/w_rec_%s" data_dir seed))
     else if lr then let u = Mat.(load_txt (Printf.sprintf "%s/u" data_dir))
     in let v =  Mat.(load_txt (Printf.sprintf "%s/v" data_dir)) 
     in Mat.(u*@v) 
@@ -123,10 +113,9 @@ let w =
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 
 let c = C.broadcast' (fun () -> 
-  if lr then  Mat.(load_txt (Printf.sprintf "%s/c" data_dir)) |> Mat.transpose |> AD.pack_arr 
-  else
-  AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
-let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1))
+  Mat.(load_txt (Printf.sprintf "%s/c" data_dir)) |> AD.pack_arr )
+let x0 = C.broadcast' (fun () -> 
+  Mat.(load_txt (Printf.sprintf "%s/x0" data_dir)) |> Mat.transpose |> AD.pack_arr )
 
 let eigenvalues m =
   let v = Linalg.D.eigvals m in
@@ -215,23 +204,7 @@ let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffi
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
 let epsilon = 1E-1
 
-(* let phi_x x = let x = AD.unpack_arr x in let y = Mat.map (fun x -> if Float.(x > epsilon) then x else if Float.(x > neg epsilon) 
-    then Float.((x +. epsilon)**2. /. ((4. *. epsilon))) 
-else 0.) x in AD.pack_arr y 
-
-let d_phi_x x = let x = AD.unpack_arr x in let y = Mat.map (fun x -> if Float.(x > epsilon) then 1. 
-else if Float.(x > neg epsilon)  then ((x +. epsilon)/.(2. *. epsilon)) else 0.) x in AD.pack_arr y
-
-let d2_phi_x x = let x = AD.unpack_arr x in let y = Mat.map (fun x -> if Float.(x > epsilon) then 0. 
-else if Float.(x > neg epsilon) then Float.(1./(2. * epsilon)) else 0.) x in AD.pack_arr y *)
-
 module U = Priors.Gaussian
-(* 
-_Phi (struct
-let phi_u x = phi_x x
-  let d_phi_u x =  d_phi_x x
-  let d2_phi_u x = d2_phi_x x
-end) *)
 
 module D0 = Dynamics.Arm_Plus (struct
   let phi_x x = phi_x x
@@ -247,10 +220,8 @@ module L0 = Likelihoods.Ramping (struct
   let phi_t t = phi_t t
 end)
 
-let t_tot = 0.6
 module R = Readout
 
-let dt_scaling = Float.(dt/.1E-3 *. 1000.)
 let prms =
   let open Owl_parameters in
   C.broadcast' (fun () ->
@@ -258,10 +229,10 @@ let prms =
         Likelihoods.Ramping_P.
           { c = (pinned : setter) c
           ; c_mask = None
-          ; qs_coeff = (pinned : setter) (AD.F Float.( dt_scaling))
-          ; t_coeff = (pinned : setter) (AD.F Float.(t_coeff *. dt_scaling))
-          ; g_coeff = (pinned : setter) (AD.F Float.(dt_scaling))
-          ; tau_mov = (pinned : setter) (AD.F Float.(t_tot))
+          ; qs_coeff = (pinned : setter) (AD.F 1.)
+          ; t_coeff = (pinned : setter) (AD.F t_coeff)
+          ; g_coeff = (pinned : setter) (AD.F 1.)
+          ; tau_mov = (pinned : setter) (AD.F Float.(0.001*.tau_mov))
           }
       in
       let dynamics =
@@ -273,8 +244,8 @@ let prms =
       in
       let prior =
         Priors.Gaussian_P.
-          { lambda_prep = (pinned : setter) (AD.F Float.(lambda_prep*.dt_scaling))
-          ; lambda_mov = (pinned : setter) (AD.F Float.(lambda_mov*.dt_scaling))
+          { lambda_prep = (pinned : setter) (AD.F lambda_prep)
+          ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
           }
       in
       let readout = R.Readout_P.{ c = (pinned : setter) c } in
@@ -334,7 +305,8 @@ let save_results suffix xs us quus n_target n_prep task =
         ~x:(AD.pack_arr u)
         ~u:(AD.pack_arr u)
     in
-    Analysis_funs.cost_u ~f:(fun k x -> AD.unpack_flt (f k x)) ~n_prep us
+    Analysis_funs.cost_u ~f:(fun k x -> let _ = Stdio.printf "%i %!" k in 
+    AD.unpack_flt (f k x)) ~n_prep us
   in
   let t_prep = Float.of_int n_prep *. dt in
   let loss = torque_err +. target_err +. input_cost_tot in
@@ -350,7 +322,7 @@ let save_results suffix xs us quus n_target n_prep task =
   in
   Owl.Mat.save_txt
   ~out:(file "quus")
-  (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
+  tr_quus;
     Owl.Mat.save_txt
       ~out:(file "u_cost")
       (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));

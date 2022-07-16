@@ -6,10 +6,12 @@ let _ = Printexc.record_backtrace true
 let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let in_dir s = Printf.sprintf "%s/%s" dir s
-let n_dim = 10
-let reaches = [|0; 1;2;3;4;6; 7|]
+let n_dim = 6
+let reaches = [|1;2; 4; 5|]
+(* let reaches = [|1;2;3;4;5;6|] *)
+(* let reaches = [|0;1;2;4;5;7|] *)
 let n_reaches = (Array.length reaches)
-let n_var = 8
+let n_var = 6
 let dt = 2E-3
 let reach_0 = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" 1 t_prep))
 let size_prep = 150
@@ -208,16 +210,18 @@ let proj2d =
 
 let _ = Array.mapi (fun i _ -> proj2d i) reaches
 
+
 let captured_variance, top_mp, top_mv =
   let _mp, sp, _ = Linalg.D.svd (Mat.transpose x_prep) in
   let _mv, sm, _ = Linalg.D.svd (Mat.transpose x_mov) in
   let _ = Mat.save_txt ~out:"sm" Mat.(transpose (sqr sm)) in
-  let sp, sm = Mat.sqr sp, Mat.sqr sm in
+  let sp, sm = (Mat.sqr sp, Mat.sqr sm) in
   let pct_varp, pct_varm =
-    Mat.(sp /$ sum' sp), Mat.(sm /$ sum' sm)
+    (Mat.(cumsum ~axis:1 sp /$ sum' sp), Mat.(cumsum ~axis:1 sm /$ sum' sm))
   in
   let top_mp, top_mv =
-    Mat.get_slice [ []; [ 0; n_var - 1 ] ] wp, Mat.get_slice [ []; [ 0; n_var - 1 ] ] wm
+    ( Mat.get_slice [ []; [ 0; n_var - 1 ] ] wp,
+      Mat.get_slice [ []; [ 0; n_var - 1 ] ] wm )
   in
   let m = Mat.(transpose top_mp *@ cov_p *@ top_mp) in
   Mat.save_txt ~out:(in_dir "analysis/pct_var_own") Mat.(pct_varp @= pct_varm);
@@ -231,55 +235,53 @@ let captured_variance, top_mp, top_mv =
   let _, ss, _ = Linalg.D.svd xcent in
   let _, tt, _ = Linalg.D.svd ycent in
   let _ =
-    Printf.printf
-      "pct_var %f %f %f %!"
+    Printf.printf "pct_var %f %f %f %!"
       (Mat.trace z /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sp))
       (Mat.trace zz /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sm))
       (Mat.trace m /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sp))
   in
-  ( Mat.save_txt
-      ~out:(in_dir "analysis/pct_var")
-      Mat.(
-        ( (Mat.sqr tt) /$ sum' sp)
-        @= ((Mat.sqr ss) /$ sum' sm))
-  , top_mp
-  , top_mv )
+  let _ = 
+  Mat.save_txt
+  ~out:(in_dir "analysis/pct_var")
+  Mat.(
+    (cumsum ~axis:1 (Mat.sqr tt) /$ sum' sp)
+    @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm)); 
+    Mat.save_txt
+    ~out:(in_dir "analysis/alignment")
+    Mat.(ones 1 1 *$
+      (trace z /. sum' sp)) in 
+  ( Mat.(
+    (cumsum ~axis:1 (Mat.sqr tt) /$ sum' sp)
+    @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm)),
+    top_mp,
+    top_mv )
 
 
-let occupancy =
-  let load i =
-    Mat.get_slice
-      [ [ i * duration; ((i + 1) * duration) - 1 ]; [] ]
-      (snd preprocessed_data)
-    (* let m = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" i t_prep)) in
-    let ma = Mat.get_fancy [ R [ 0; duration - 1 ]; R [ 0; -1 ] ] m in
-    ma *)
-  in
-  let projections x =
-    let rp = reconstructed (proj x wp) wp in
-    let rm = reconstructed (proj x wm) wm in
-    Mat.(rp + rm), rp, rm, x
-  in
-  let rps =
-    Arr.concatenate
-      ~axis:2
-      (Array.mapi (fun i _ ->
-           let _, rp, _, _ = projections (load i) in
-           let m = Arr.reshape rp [| (Arr.shape rp).(0); (Arr.shape rp).(1); 1 |] in
-           m) reaches)
-  and rms =
-    Arr.concatenate
-      ~axis:2
-      (Array.mapi (fun i _ ->
-           let _, _, rm, _ = projections (load i) in
-           let m = Arr.reshape rm [| (Arr.shape rm).(0); (Arr.shape rm).(1); 1 |] in
-           m) reaches)
-  in
-  let vprep, vmov =
-    let x = Arr.var ~axis:2 rps |> Arr.sum ~axis:1 |> Arr.to_array in
-    ( Mat.of_array x (-1) 1
-    , let x = Arr.var ~axis:2 rms |> Arr.sum ~axis:1 |> Arr.to_array in
-      Mat.of_array x (-1) 1 )
-  in
-  ( Mat.save_txt ~out:(in_dir "analysis/vprep") Mat.(vprep /$ max' vprep)
-  , Mat.save_txt ~out:(in_dir "analysis/vmov") Mat.(vmov /$ max' vmov) )
+let sample_random_sub u s v = 
+let vs = Mat.gaussian n n_dim in
+let s = Mat.diagm s
+in let rdn_sub = Mat.(u*@sqrt s*@vs /$ (l2norm' (u*@sqrt s*@vs)))
+in rdn_sub
+
+let random_alignment u s v = 
+  let v1 = sample_random_sub u s v in let v2 = sample_random_sub u s v
+in Mat.(trace ((transpose v1)*@v2*@(transpose v2)*@v1))
+
+
+
+
+let random_alignments = 
+  let x =
+    let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
+    let f i _ =
+      Arr.reshape
+        (Arr.get_slice [ [ i ]; [ ]; [] ] m)
+        [| duration; -1 |]
+    in
+    Array.mapi f reaches |> Arr.concatenate ~axis:0 in   
+  let _ = Stdio.printf "%i %i %!" (Mat.row_num x) (Mat.col_num x) in 
+  let cov =
+    let r = Mat.(x - mean ~axis:0 x) in
+    Mat.(transpose r *@ r)
+  in let u, s, v = Linalg.D.svd cov in 
+  Array.init 10000 (fun _ -> [|random_alignment u s v|]) |> Mat.of_arrays |> fun z -> Mat.save_txt ~out:(in_dir "analysis/baseline_alignments") z

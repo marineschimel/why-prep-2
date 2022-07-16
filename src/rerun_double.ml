@@ -13,23 +13,18 @@ let subdir = Cmdargs.(get_string "-subdir" |> force ~usage:"-d [dir to save in]"
 let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which data is]")
 let t1 = Cmdargs.(get_float "-t1" |> force ~usage:"-t1")
 let t2 = Cmdargs.(get_float "-t2" |> force ~usage:"-t2")
-let tau_mov_1 = Cmdargs.(get_float "-tau_mov_1" |> force ~usage:"-tau_mov_1")
-let tau_mov_2 = Cmdargs.(get_float "-tau_mov_2" |> force ~usage:"-tau_mov_2")
-let exponent = Cmdargs.(get_int "-exponent" |> force ~usage:"exponent")
-let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.0)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
 let pause = Cmdargs.(get_float "-pause" |> default 0.5)
+let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.0)
 let pause_coeff = Cmdargs.(get_float "-pause_coeff" |> default 1.)
-
 
 let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
 
-let exponent = AD.F (Float.of_int exponent)
-let phi_t t = AD.Maths.(t ** exponent)
+
 let scale_mov = Cmdargs.(get_float "-scale_mov" |> default 1.)
 let rad = Cmdargs.(get_float "-rad" |> default 0.12)
 let t_tot = 0.6
@@ -88,6 +83,46 @@ let link_f x = phi_x x
 let double_target i = double_targets.(i)
 let dt = 2E-3
 
+let dt_scaling = Float.(dt/.1E-3 *. 1000.)
+let peak_speed i =
+  let thetas = Mat.load_txt (in_dir (Printf.sprintf "thetas_%i_0" i)) in
+  let pos =
+    thetas
+    |> Mat.map_rows (fun t ->
+           Arm.unpack_state (M.hand_of (Arm.pack_state (AD.pack_arr t))))
+    |> Mat.concatenate ~axis:0
+  in
+  let speed = Mat.get_fancy [ R [ 0; -1 ]; L [ 1; 3 ] ] pos in
+  let max_speed = Mat.max' (Mat.l2norm ~axis:1 speed) in
+  max_speed
+
+
+let peak_peak_speeds = [| Array.init 7 ~f:peak_speed |] |> Mat.of_arrays |> Mat.max'
+
+let get_time _tgt1 _tgt2 =
+  let tgt1 = Arm.pack_state (AD.pack_arr _tgt1) in
+  let tgt2 = Arm.pack_state (AD.pack_arr _tgt2) in
+  let pos1 = M.hand_of tgt1 |> Arm.unpack_state in
+  let pos2 = M.hand_of tgt2 |> Arm.unpack_state in
+  let x1 = Mat.get pos1 0 0 in
+  let y1 = Mat.get pos2 0 0 in
+  let x2 = Mat.get pos1 0 1 in
+  let y2 = Mat.get pos2 0 1 in
+  let angle = Float.atan Float.((y2 -. y1) /. (x2 -. x1)) in
+  let length = Mat.(l2norm' Mat.(pos1 - pos2)) in
+  let theta_0 = _tgt1 in
+  let min_time = 0.25 in
+  let max_time = 0.5 in
+  M.get_time_reach
+    ~min_time
+    ~max_time
+    ~dt
+    ~peak_speed:(1.2 *. peak_peak_speeds)
+    ~theta_0
+    ~angle
+    ~length
+
+
 (*angle is in hand space (arctan ((y2-y1)/(x2-x1))) and
 peak_speed is peak radial speed and length = *)
 
@@ -118,6 +153,7 @@ let t_preps = [| 0.5 |]
 let w =
   C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)))
 
+
 let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir)))
 
 (* let c = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:0.003 2 m) *)
@@ -133,9 +169,12 @@ what about one population receiving modulated inputs about the target?
 *)
 (* x(t+1)- x(t) = Wx(t) + baseline => 0 when x = -W^(-1)*baseline  *)
 
-let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1))
+let x0 =
+  C.broadcast' (fun () ->
+      AD.Maths.transpose
+        (AD.pack_arr
+           (Mat.get_slice [ [ 0 ] ] Mat.(load_txt (Printf.sprintf "%s/xs_1_500" dir)))))
 
-let x0 = C.broadcast' (fun () -> let m = Mat.load_txt (in_dir "rates_0_0") in AD.pack_arr ((Mat.get_slice [[0]] m) |> fun z -> Arr.reshape z [|-1;1|]))
 
 let baseline_input =
   C.broadcast' (fun () ->
@@ -163,7 +202,7 @@ let tasks =
         let tj = targets.(j) in
         Mat.(ti @= tj)
       in
-      k, j, Model.
+      Model.
         { t_prep = t_preps.(n_time)
         ; x0
         ; t_movs = [| t1; t2 |]
@@ -186,6 +225,9 @@ let save_task suffix task =
 
 
 let epsilon = 1E-1
+let exponent = 2
+let exponent = AD.F (Float.of_int exponent)
+let phi_t t = AD.Maths.(t ** exponent)
 
 module U = Priors.Gaussian
 
@@ -204,8 +246,6 @@ module L0 = Likelihoods.Successive_Ramping (struct
 end)
 
 module R = Readout
-
-let dt_scaling = Float.(dt/.1E-3 *. 1000.)
 
 let prms =
   let open Owl_parameters in
@@ -241,7 +281,6 @@ let prms =
 
 
 module I = Model.ILQR (U) (D0) (L0)
-
 let save_results suffix xs us n_prep task =
   let file s = Printf.sprintf "%s/%s/%s_%s" dir subdir s suffix in
   let xs = AD.unpack_arr xs in
@@ -295,33 +334,33 @@ let save_results suffix xs us n_prep task =
     Mat.((rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
 
 
-let attempt_1 =
-  let x0 = x0 in
-  let _ = save_prms "" prms in
-    Array.foldi tasks ~init:[] ~f:(fun i acc (k, j, t) ->
+
+let () =
+  let x0 = x0 in Array.iteri tasks ~f:(fun i t ->
         if Int.(i % C.n_nodes = C.rank)
-        then (
-        try
+        then 
+          try
+            let k = i / (n_targets * Array.length t_preps) in
+            let next_i = Int.rem i (n_targets * Array.length t_preps) in
+            let j = next_i / Array.length t_preps in
+            let n_prep = Float.to_int (t.t_prep /. dt) in
+            let t_prep_int = Float.to_int (1000. *. t.t_prep) in
+            let m = Mat.load_txt (in_dir (Printf.sprintf "%s/rates_%i_%i_%i" subdir k j t_prep_int)) in 
+            let r = Mat.row_num m in Stdio.printf "loaded m, r = %i" r
+          with |_ -> Stdio.printf "tree";
+          let k = i / (n_targets * Array.length t_preps) in
+          let next_i = Int.rem i (n_targets * Array.length t_preps) in
+          let j = next_i / Array.length t_preps in
           let t_prep = Float.to_int (1000. *. t.t_prep) in
           let xs, us, l, _,_ =
-            I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
-          in
-          save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
+          I.solve ~u_init:Mat.(gaussian ~sigma:0.0001 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
+        in
+        save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
+          let loss =  (Mat.of_array [| AD.unpack_flt l |] 1 (-1)) in 
           Mat.save_txt
             ~out:(in_dir (Printf.sprintf "loss_%i_%i_%i" k j t_prep))
-            (Mat.of_array [| AD.unpack_flt l |] 1 (-1)); (true, (k,j,t))::acc
-        with |_ -> (false, (k, j, t))::acc) else acc) |> C.gather |> fun a -> C.broadcast' (fun () -> a |> Array.to_list |> List.concat |> Array.of_list)
+           loss)
 
-let _ =   Array.iteri attempt_1 ~f:(fun i (b, (k, j, t)) ->
-    if Int.(i % C.n_nodes = C.rank)
-    then (  if not b then 
-      let t_prep = Float.to_int (1000. *. t.t_prep) in
-      let xs, us, l, _,_ =
-        I.solve ~u_init:Mat.(gaussian ~sigma:0.0001 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
-      in
-      save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
-      Mat.save_txt
-        ~out:(in_dir (Printf.sprintf "loss_%i_%i_%i" k j t_prep))
-        (Mat.of_array [| AD.unpack_flt l |] 1 (-1))))
 
 let _ = C.barrier ()
+
