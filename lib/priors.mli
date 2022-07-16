@@ -51,3 +51,9 @@ module Gaussian_B : sig
 
   val init : ?am:float -> lambda:float -> Owl_parameters.setter -> P.p
 end
+
+module Gaussian_Prior : sig
+  include Prior_T with type 'a P.prm = 'a Gaussian_P.prm
+
+  val init : ?am:float -> lambda:float -> Owl_parameters.setter -> P.p
+end

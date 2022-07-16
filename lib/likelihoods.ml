@@ -939,3 +939,60 @@ else
   let neg_hess_t =
       None
 end
+
+
+
+
+module Ramping_Integrator (X : sig
+  val label : string
+  val phi_x : AD.t -> AD.t
+  val phi_t : AD.t -> AD.t
+end) =
+struct
+  module P = Owl_parameters.Make (Ramping_P)
+  open Ramping_P
+
+  let requires_linesearch = false
+  let label = X.label
+
+  let neg_logp_t ~readout ~prms ~task =
+    let t_prep = task.t_prep in
+    let target_pos = AD.Maths.get_slice [ []; [ 0 ] ] task.target in
+    let theta0 = task.theta0 in
+    let qs_coeff = Owl_parameters.extract prms.Ramping_P.qs_coeff in
+    let g_coeff = Owl_parameters.extract prms.Ramping_P.g_coeff in
+    let t_coeff = Owl_parameters.extract prms.Ramping_P.t_coeff in
+    let tau_mov = Owl_parameters.extract prms.Ramping_P.tau_mov in
+    let dt = task.dt in
+    let n_prep = Float.to_int (t_prep /. dt) in
+    let n_mov =
+      let d_mov = Float.to_int (task.t_movs.(0) /. dt) in
+      n_prep + d_mov
+    in
+    let c = readout in
+    let c_t = AD.Maths.transpose c in
+    fun ~k ~z_t ->
+      let thetas = AD.Maths.get_slice [ []; [ -2;-1 ] ] z_t in
+      let theta_pos = AD.Maths.get_slice [ []; [ -2 ] ] thetas in
+      let theta_vel = AD.Maths.get_slice [ []; [ -1 ] ] thetas in
+      let x_t = AD.Maths.get_slice [ []; [ 0;-3 ] ] z_t in
+      let x_t = X.phi_x x_t in
+      if k < n_prep
+      then (
+        let mu_t = AD.Maths.(x_t *@ c_t) in
+        AD.Maths.(
+          (F 0.5 * sum' (t_coeff * sqr mu_t))
+          + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0))))
+      else  
+          let t_diff = AD.Maths.(AD.F (Float.(of_int Int.((k - n_prep))*dt))) in  AD.Maths.(g_coeff * X.phi_t ((t_diff / tau_mov)) * (l2norm_sqr' (theta_pos - target_pos)))
+        (* AD.Maths.(AD.F Float.of_int Int.(k - n_prep)
+          * (l2norm_sqr' (theta_pos - target_pos) )) *)
+
+
+  let neg_jac_t =
+    None
+
+
+  let neg_hess_t =
+    None
+end

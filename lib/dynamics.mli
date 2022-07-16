@@ -42,3 +42,10 @@ module Nonlinear (X : sig
   val phi_u : AD.t -> AD.t
   val d_phi_u : AD.t -> AD.t
 end) : Dynamics_T with type 'a P.prm = 'a Arm_Plus_P.prm
+
+module Integrator (X : sig
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val phi_u : AD.t -> AD.t
+  val d_phi_u : AD.t -> AD.t
+end) : Dynamics_T with type 'a P.prm = 'a Arm_Plus_P.prm

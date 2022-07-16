@@ -432,3 +432,47 @@ module Gaussian_B = struct
   let neg_hess_t =
     None
 end
+
+
+
+module Gaussian_Prior = struct
+  module P = Owl_parameters.Make (Gaussian_P)
+  open Gaussian_P
+
+  let requires_linesearch = false
+
+  let init ?(am = 1.) ~lambda (set : Owl_parameters.setter) =
+    { lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
+
+
+  (* returns a column vector *)
+
+  let neg_logp_t ~prms ~task =
+    let t_prep = task.t_prep in
+    let dt = task.dt in
+    let n_prep = Float.to_int (t_prep /. dt) in
+    let lp = Owl_parameters.extract prms.lambda_prep in
+    let lm = Owl_parameters.extract prms.lambda_mov in
+    let sl =
+      match task.scale_lambda with
+      | None -> AD.F 1.
+      | Some sl -> AD.F sl
+    in
+    fun ~k ~x:_ ~u ->
+      let m = AD.Mat.col_num u in 
+      let cst = Float.(of_int m * log Const.pi2) in
+      let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
+      AD.Maths.(F 0.5 * (F cst + lam * l2norm_sqr' u - sum' (log (lam)))) 
+      (* let fb = Owl_parameters.extract prms.first_bin in
+  let ell_s = Owl_parameters.extract prms.spatial_stds in
+  let cst = Float.(of_int m * log Const.pi2) in
+  fun ~k ~x:_ ~u ->
+    let sigma = if k < n_beg then AD.Maths.(fb * ell_s) else ell_s in
+    AD.Maths.(F 0.5 * (F cst + (F 2. * sum' (log sigma)) + l2norm_sqr' (u / sigma))) *)
+
+  let neg_jac_t =
+    None
+
+  let neg_hess_t =
+    None
+end

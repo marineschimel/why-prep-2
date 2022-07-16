@@ -58,3 +58,11 @@ module Successive_Ramping (X : sig
   val phi_x : AD.t -> AD.t
   val phi_t : AD.t -> AD.t
 end) : Likelihood_T with type 'a P.prm = 'a Successive_Ramping_P.prm
+
+
+
+module Ramping_Integrator (X : sig
+  val label : string
+  val phi_x : AD.t -> AD.t
+  val phi_t : AD.t -> AD.t
+end) : Likelihood_T with type 'a P.prm = 'a Ramping_P.prm

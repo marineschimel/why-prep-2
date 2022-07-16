@@ -11,7 +11,7 @@ module Integrate (D : Dynamics_T) = struct
       (* u is a TxN matrix, giving T+1 timesteps,
          but actually the first one is going to give x0 *)
       let n_steps = AD.Mat.row_num u in
-      let x0 = AD.Mat.zeros 1 n in
+      let x0 = task.x0 in
       let us =
         AD.Maths.split ~axis:0 (Array.init n_steps ~f:(fun _ -> 1)) u |> Array.to_list
       in
@@ -680,6 +680,63 @@ struct
       in
       let new_x = AD.Maths.(x + dx) in
       new_x
+
+
+  let dyn_x =
+    None
+
+
+  let dyn_u =
+   None
+end
+
+module Integrator (X : sig
+  val phi_x : AD.t -> AD.t
+  val d_phi_x : AD.t -> AD.t
+  val phi_u : AD.t -> AD.t
+  val d_phi_u : AD.t -> AD.t
+end) =
+struct
+  module P = Owl_parameters.Make (Arm_Plus_P)
+  open Arm_Plus_P
+  open X
+
+  let requires_linesearch = true
+
+  let dyn ~readout ~theta ~task =
+    let b = Owl_parameters.extract theta.b in
+    let c = readout in
+    let bias = Owl_parameters.extract theta.bias in
+    let tau = task.tau in
+    let a = Owl_parameters.extract theta.a in
+    let a = AD.Maths.(a / AD.F tau) in
+    let b = AD.Maths.(b / AD.F tau) in
+    let x_init = task.x0 |> fun z -> AD.Maths.get_slice [ []; [ 0; -3 ] ] z in
+    let dt = task.dt in
+    let _dt = AD.F dt in
+    fun ~k ~x ~u ->
+      let xs = AD.Maths.get_slice [ []; [ 0; -3 ] ] x in
+      let thetas = AD.Maths.get_slice [ []; [ -2; -1] ] x in
+      let xst = AD.Maths.transpose xs in
+      let dx =
+        AD.Maths.(((phi_x xs *@ a) - (xs / AD.F tau) + (phi_u (u + bias) *@ b)) * _dt)
+      in
+      let tau =
+        let r = AD.Maths.(phi_x xst) in
+        AD.Maths.(c *@ r) |> AD.Maths.transpose
+      in
+      let dotdot_theta = AD.Maths.sum' tau in
+      let dot_theta = AD.Maths.(sum' (get_slice [[]; [-1]] x)) in 
+      let theta = AD.Maths.(sum' (get_slice [[]; [-2]] x)) in 
+      let new_thetas =
+        AD.Maths.(
+          of_arrays
+            [| [| AD.Maths.(theta + _dt * dot_theta)
+                ; AD.Maths.(dot_theta + _dt * dotdot_theta)
+               |]
+            |])
+      and new_x = AD.Maths.(xs + dx) in
+      AD.Maths.(concatenate ~axis:1 [| new_x; new_thetas |])
 
 
   let dyn_x =
