@@ -12,12 +12,10 @@ let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which 
 let results_dir =
   Cmdargs.(get_string "-rdir" |> force ~usage:"-rdir [where to save the key results]")
 
-
 let save_all = Cmdargs.(check "-save_all")
 
 let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
-
 
 let skew = Cmdargs.(check "-skew")
 let id = Cmdargs.(check "-id")
@@ -32,17 +30,15 @@ let targets =
   C.broadcast' (fun () ->
       Array.init n_targets ~f:(fun i ->
           let alpha1 = Stats.uniform_rvs ~a:0. ~b:1. in
-          let alpha2 =  Stats.uniform_rvs ~a:0. ~b:1. in
+          let alpha2 = Stats.uniform_rvs ~a:0. ~b:1. in
           let t = Mat.linspace 0. 10. 1000 in
           let x = Mat.(alpha1 $* t) in
           let y = Mat.(alpha2 $* t) in
-          Mat.transpose Mat.(x@=y)))
-
+          Mat.transpose Mat.(x @= y)))
 
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(in_dir "targets") (Mat.concatenate ~axis:0 targets))
-
 
 let beta = AD.F 1E-2
 
@@ -79,12 +75,10 @@ let _ =
        1
        (-1))
 
-
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 
 (* let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.2; 0.3; 0.45; 0.5; 0.6; 0.8; 1. |] *)
 let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.2; 0.3; 0.45; 0.5; 0.6 |]
-
 
 let eigenvalues m =
   let v = Linalg.D.eigvals m in
@@ -92,13 +86,13 @@ let eigenvalues m =
   let im = Dense.Matrix.Z.im v in
   Mat.(concat_horizontal (transpose re) (transpose im))
 
-
 let w =
   C.broadcast' (fun () ->
-    if id then Mat.(rad_w$* eye m) else 
-      let mat = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
-      if skew then Mat.((mat - transpose mat) /$ 2.) else mat)
-
+      if id
+      then Mat.(rad_w $* eye m)
+      else (
+        let mat = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
+        if skew then Mat.((mat - transpose mat) /$ 2.) else mat))
 
 let eigs = C.broadcast' (fun () -> eigenvalues w)
 
@@ -107,12 +101,10 @@ let _ =
       Mat.save_txt ~out:(Printf.sprintf "%s/w" dir) w;
       Mat.save_txt ~out:(Printf.sprintf "%s/eigs" dir) eigs)
 
-
 let c =
   C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
 
 let x0 = C.broadcast' (fun () -> AD.Mat.uniform ~a:(-2.) ~b:2. m 1)
-
 
 (* let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1)) *)
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
@@ -131,11 +123,9 @@ let _ =
         ~out:(Printf.sprintf "%s/nullspace" dir)
         (AD.unpack_arr AD.Maths.(c *@ u0)))
 
-
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/c" dir) (AD.unpack_arr c))
-
 
 (* 
 let _ =
@@ -164,10 +154,7 @@ let baseline_input =
   C.broadcast' (fun () ->
       AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose)
 
-
-let x0 =
-  x0 |> AD.Maths.transpose
-
+let x0 = x0 |> AD.Maths.transpose
 
 let tasks =
   Array.init
@@ -187,7 +174,6 @@ let tasks =
         ; theta0
         ; tau = 150E-3
         })
-
 
 let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
@@ -252,19 +238,16 @@ let prms =
       let generative = Model.Generative_P.{ prior; dynamics; likelihood } in
       Model.Full_P.{ generative; readout })
 
-
 module I = Model.ILQR (U) (D0) (L0)
 
 let summary_tasks =
   Array.init (Array.length t_preps) ~f:(fun _ ->
       Array.init n_targets ~f:(fun _ -> Mat.zeros 1 1, false))
 
-
 let get_idx t =
   let _ = Stdio.printf "ts are %f %f %!" t t_preps.(0) in
   let idx, _ = Array.findi_exn t_preps ~f:(fun _ tp -> Float.(t = tp)) in
   idx
-
 
 let save_results suffix xs us n_target n_prep task =
   let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
@@ -343,7 +326,6 @@ let save_results suffix xs us n_target n_prep task =
     get_idx t_prep, n_target, summary)
   else get_idx t_prep, n_target, summary
 
-
 (*one for each target/prep time
 also want to save the total prep index + loss ratio for 0/500 and max eig and rad there*)
 let summaries, try_tasks =
@@ -358,7 +340,7 @@ let summaries, try_tasks =
         let t_prep_int = Float.to_int (1000. *. t.t_prep) in
         let _ = Stdio.printf "try tasks" in
         let xs, us, l, success =
-          I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m) ~m ~x0 ~prms t
+          I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:m ~m ~x0 ~prms t
         in
         let idx, n_target, summary =
           save_results
@@ -385,13 +367,11 @@ let summaries, try_tasks =
       ( v1 |> Array.to_list |> List.concat |> Array.of_list
       , v2 |> Array.to_list |> List.concat |> Array.of_list ))
 
-
 let _ = Stdio.printf "ran the summaries %!"
 
 let save_summaries =
   C.root_perform (fun () ->
       Array.iter summaries ~f:(fun (i, n, s) -> summary_tasks.(i).(n) <- s))
-
 
 let _ = Stdio.printf "saved the summaries so far %!"
 
@@ -406,7 +386,7 @@ let reran_summaries, more_saving =
             let n_prep = Float.to_int (1000. *. t.t_prep /. dt) in
             let t_prep_int = Float.to_int (1000. *. t.t_prep) in
             let xs, us, l, success =
-              I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m ) ~m ~x0 ~prms t
+              I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:m ~m ~x0 ~prms t
             in
             let idx, n_target, summary =
               save_results
@@ -441,7 +421,6 @@ let reran_summaries, more_saving =
   else
     C.broadcast' (fun () -> Array.init 1 ~f:(fun _ -> 1, 1, (Mat.zeros 1 1, true)), false)
 
-
 let _ = Stdio.printf "saving summaries 2 %!"
 
 let _ =
@@ -449,7 +428,6 @@ let _ =
   then
     C.root_perform (fun () ->
         Array.iter reran_summaries ~f:(fun (i, n, s) -> summary_tasks.(i).(n) <- s))
-
 
 let final_save =
   C.root_perform (fun () ->
@@ -459,9 +437,11 @@ let final_save =
       let _ =
         Misc.save_bin
           (Printf.sprintf "%s/rad_%.3f_seed_%i_summaries" results_dir rad_w seed)
-          summary_tasks; 
-          Mat.save_txt ~out:(Printf.sprintf "%s/rad_%.3f_seed_%i_eigs" results_dir rad_w seed) eigs   
-          in
+          summary_tasks;
+        Mat.save_txt
+          ~out:(Printf.sprintf "%s/rad_%.3f_seed_%i_eigs" results_dir rad_w seed)
+          eigs
+      in
       let mean_across_tgts =
         Array.map summary_tasks ~f:(fun x ->
             let arr_mat = Array.map ~f:fst x in
@@ -494,7 +474,6 @@ let final_save =
       Mat.save_txt
         ~out:(Printf.sprintf "%s/rad_%.3f_seed_%i_full_summary" results_dir rad_w seed)
         full_summary)
-
 
 (* let full_summary =   *)
 

@@ -88,7 +88,6 @@ module Student_P = struct
     f init (x.nu, with_prefix ?prefix "nu")
 end
 
-
 module Gaussian_B_P = struct
   type 'a prm =
     { b : 'a

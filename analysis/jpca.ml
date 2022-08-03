@@ -36,7 +36,6 @@ let get_mskew ~dx ~x =
   in
   optimise w 0 1E9 1. |> unpack_arr
 
-
 let get_modes_jpca mskew =
   let module Z = Dense.Matrix.Z in
   let u, s = Linalg.D.eig mskew in

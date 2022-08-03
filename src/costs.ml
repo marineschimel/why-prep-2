@@ -10,18 +10,16 @@ module C_Running_4D (P : Prms) = struct
   (*default setting of qcoeff = 1E-7*)
   let n_theta = 4
   let q = Mat.(eye 2 *$ (q_coeff *. 0.5)) |> AD.pack_arr
-   let r = Mat.(eye size_net  *$ (P.r_coeff *. 0.5)) |> AD.pack_arr 
-
-  let t_mat = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr 
-
+  let r = Mat.(eye size_net *$ (P.r_coeff *. 0.5)) |> AD.pack_arr
+  let t_mat = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr
   let a_mat = Mat.(eye size_net *$ (Defaults.a_coeff *. 0.5)) |> AD.pack_arr
   let tau = AD.F (P.t_prep +. P.t_mov)
   let __dt = AD.F sampling_dt
   let target = P.target_theta.(0) |> AD.pack_arr
-let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
+  let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
   let in_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] initial_theta
   let cost_function t = AD.Maths.(F 1. + (F 0. * t))
-  let q_start = Mat.(eye 2 *$ (P.qs_coeff *.0.5)) |> AD.pack_arr
+  let q_start = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr
   let q_start_coeff = P.qs_coeff
 
   (*AD.Maths.(
@@ -31,6 +29,7 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
   let power u g =
     AD.pack_flt
       (Mat.sum' (Mat.map (fun x -> Maths.pow x g) (AD.unpack_arr (AD.primal' u))))
+
   let cost ~u ~x ~k =
     let thetas = unpack_pos x in
     let vel = unpack_vel x in
@@ -39,20 +38,18 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
     let dx_vel = vel in
     let _dx_start = AD.Maths.(in_pos - thetas) in
     let t = AD.Maths.(__dt * F (float_of_int k)) in
-    let torques =AD.Maths.(cmc*@(phi (P.__c *@ g (transpose x_state)))) in
-    let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in 
+    let torques = AD.Maths.(cmc *@ phi (P.__c *@ g (transpose x_state))) in
+    let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in
     (* let u = AD.Maths.(u*@(transpose __b)) in  *)
     AD.Maths.(
       ((sum' (u *@ r * u) * cost_function t)
       + (sum' (dx_p *@ q * dx_p) * sigmoid ((t - tau) / F 20E-3))
       + (F 0.1 * (sum' (dx_vel *@ q * dx_vel) * sigmoid ((t - tau) / F 20E-3)))
-
-      + (F 1. * (sum' (dx_vel *@ q_start * dx_vel) *start)
-     +  ( (sum' (_dx_start *@ q_start * _dx_start) * start))
-      + (sum' (transpose torques *@t_mat * transpose torques) 
-        * sigmoid ((F P.t_prep - t) / F 2E-3))))
+      + ((F 1. * (sum' (dx_vel *@ q_start * dx_vel) * start))
+        + (sum' (_dx_start *@ q_start * _dx_start) * start)
+        + (sum' (transpose torques *@ t_mat * transpose torques)
+          * sigmoid ((F P.t_prep - t) / F 2E-3))))
       * __dt)
-
 
   let rl_u =
     (*Need to check this*)
@@ -60,71 +57,73 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
       let t = AD.Maths.(__dt * F (float_of_int k)) in
       let c = cost_function t in
       let r = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
-      let u = AD.Maths.(u*@(transpose P.b)) in 
-      AD.Maths.(u *@ r*@P.b  * c * __dt)
+      let u = AD.Maths.(u *@ transpose P.b) in
+      AD.Maths.(u *@ r *@ P.b * c * __dt)
     in
     Some rlu
 
-    let rl_x = let rlx ~k ~x ~u:_u =
-          let _, x_state = unpack_full_state x 4 in
-          let thetas = unpack_pos x in
-
-          let t = AD.Maths.(__dt * F (float_of_int k)) in
-            let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in 
- 
-          let dx_p = AD.Maths.(tgt_pos - thetas) in
-let __c = AD.pack_arr P.c in 
-          let torques =AD.Maths.(cmc*@(phi (P.__c *@ g (transpose x_state)))) in
-          let dtorques = AD.Maths.(cmc *@ (dphi (__c*@(transpose x_state)))*@ __c) in 
-          let dx_vel = unpack_vel x in
-          let dx_start = AD.Maths.(in_pos - thetas) in
-          let r_xstate =  AD.Maths.( (transpose torques)*@ t_mat *@ dtorques * F 2. * sigmoid ((F P.t_prep - t) / F 2E-3))
-          in let r_xp1 = AD.Maths.(AD.F 2. * neg dx_p *@ q  * sigmoid ((t - tau) / F 20E-3))
-          in let r_xp2 = AD.Maths.(AD.F 2. * neg dx_start *@ q_start  * start)
-          in let r_xv1 =  AD.Maths.(dx_vel *@ q  * sigmoid ((t - tau) / F 20E-3) * F 0.2)
-          in let r_xv2 =  AD.Maths.(dx_vel *@ q_start  * start * F 2.)
-        in AD.Maths.((concatenate ~axis:1 [|r_xp1+r_xp2;r_xv1+r_xv2;r_xstate|])*__dt)
-
-        in 
-        Some rlx
+  let rl_x =
+    let rlx ~k ~x ~u:_u =
+      let _, x_state = unpack_full_state x 4 in
+      let thetas = unpack_pos x in
+      let t = AD.Maths.(__dt * F (float_of_int k)) in
+      let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in
+      let dx_p = AD.Maths.(tgt_pos - thetas) in
+      let __c = AD.pack_arr P.c in
+      let torques = AD.Maths.(cmc *@ phi (P.__c *@ g (transpose x_state))) in
+      let dtorques = AD.Maths.(cmc *@ dphi (__c *@ transpose x_state) *@ __c) in
+      let dx_vel = unpack_vel x in
+      let dx_start = AD.Maths.(in_pos - thetas) in
+      let r_xstate =
+        AD.Maths.(
+          transpose torques
+          *@ t_mat
+          *@ dtorques
+          * F 2.
+          * sigmoid ((F P.t_prep - t) / F 2E-3))
+      in
+      let r_xp1 = AD.Maths.(AD.F 2. * neg dx_p *@ q * sigmoid ((t - tau) / F 20E-3)) in
+      let r_xp2 = AD.Maths.(AD.F 2. * neg dx_start *@ q_start * start) in
+      let r_xv1 = AD.Maths.(dx_vel *@ q * sigmoid ((t - tau) / F 20E-3) * F 0.2) in
+      let r_xv2 = AD.Maths.(dx_vel *@ q_start * start * F 2.) in
+      AD.Maths.(concatenate ~axis:1 [| r_xp1 + r_xp2; r_xv1 + r_xv2; r_xstate |] * __dt)
+    in
+    Some rlx
 
   let rl_uu =
     let rluu ~k ~x:_x ~u:_u =
       let t = AD.Maths.(__dt * F (float_of_int k)) in
       let c = cost_function t in
       let ma = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
-      AD.Maths.((transpose P.b)*@ ma*@ ( P.b) * c * __dt)
+      AD.Maths.(transpose P.b *@ ma *@ P.b * c * __dt)
     in
     Some rluu
-
 
   let rl_ux =
     let f ~k:_k ~x:_x ~u:_u = AD.F 0. in
     Some f
 
-
   let rl_xx =
     let rlxx ~k ~x:_x ~u:_u =
       let t = AD.Maths.(__dt * F (float_of_int k)) in
-        let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in 
+      let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in
       let mu =
         AD.Maths.(
           (AD.Mat.eye 2 * AD.F Defaults.q_coeff * __dt * sigmoid ((t - tau) / F 20E-3))
-
-          + (AD.F P.qs_coeff* AD.Mat.eye 2 * start * __dt))
+          + (AD.F P.qs_coeff * AD.Mat.eye 2 * start * __dt))
       in
       let mv =
         AD.Maths.(
-          __dt * AD.Mat.eye 2 * F Defaults.q_coeff * (F 0.1 * sigmoid ((t - tau) / F 20E-3)) +
-       
-          __dt * AD.Mat.eye 2 * F P.qs_coeff * start * F 1.)
-
+          (__dt
+          * AD.Mat.eye 2
+          * F Defaults.q_coeff
+          * (F 0.1 * sigmoid ((t - tau) / F 20E-3)))
+          + (__dt * AD.Mat.eye 2 * F P.qs_coeff * start * F 1.))
       in
       let mx =
         AD.Maths.(
           ((sigmoid ((F P.t_prep - t) / F 2E-3)
-      
-           * (transpose P.__c *@ t_mat* F 2. *@P.__c) ) 
+           * (transpose P.__c *@ t_mat * F 2. *@ P.__c))
           + (F Defaults.a_coeff * AD.Mat.eye size_net))
           * __dt)
       in
@@ -141,7 +140,6 @@ let __c = AD.pack_arr P.c in
     in
     Some rlxx
 
-
   let final_cost ~x ~k:_k =
     let q = Owl.Mat.(eye 2 *$ Defaults.q_coeff) |> AD.pack_arr in
     let fl =
@@ -153,31 +151,28 @@ let __c = AD.pack_arr P.c in
     in
     fl
 
-
   let fl_x = None
 
   (*let f ~k:_k ~x:_x = AD.F 0. in
     Some f*)
 
   let fl_xx = None
-end 
+end
 
 module C_Running (P : Prms) = struct
   (*default setting of qcoeff = 1E-7*)
   let n_theta = 4
   let q = Mat.(eye 2 *$ (q_coeff *. 0.5)) |> AD.pack_arr
-   let r = Mat.(eye size_net  *$ (P.r_coeff *. 0.5)) |> AD.pack_arr 
-
-  let t_mat = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr 
-
+  let r = Mat.(eye size_net *$ (P.r_coeff *. 0.5)) |> AD.pack_arr
+  let t_mat = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr
   let a_mat = Mat.(eye size_net *$ (Defaults.a_coeff *. 0.5)) |> AD.pack_arr
   let tau = AD.F (P.t_prep +. P.t_mov)
   let __dt = AD.F sampling_dt
   let target = P.target_theta.(0) |> AD.pack_arr
-let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
+  let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
   let in_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] initial_theta
   let cost_function t = AD.Maths.(F 1. + (F 0. * t))
-  let q_start = Mat.(eye 2 *$ (P.qs_coeff *.0.5)) |> AD.pack_arr
+  let q_start = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr
   let q_start_coeff = P.qs_coeff
 
   (*AD.Maths.(
@@ -188,10 +183,13 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
     AD.pack_flt
       (Mat.sum' (Mat.map (fun x -> Maths.pow x g) (AD.unpack_arr (AD.primal' u))))
 
-
   let cost ~u ~x ~k =
-    let wp,wm = P.weighing_pm in 
-    let cost_function t = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)*F wp + sigmoid ((t - F P.t_prep) / F 2E-4)*F wm) in 
+    let wp, wm = P.weighing_pm in
+    let cost_function t =
+      AD.Maths.(
+        (sigmoid ((F P.t_prep - t) / F 2E-4) * F wp)
+        + (sigmoid ((t - F P.t_prep) / F 2E-4) * F wm))
+    in
     let thetas = unpack_pos x in
     let vel = unpack_vel x in
     let _, x_state = unpack_full_state x 4 in
@@ -200,95 +198,100 @@ let tgt_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] target
     let _dx_start = AD.Maths.(in_pos - thetas) in
     let t = AD.Maths.(__dt * F (float_of_int k)) in
     let torques = AD.Maths.(P.__c *@ transpose x_state) in
-    let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in 
-    let u = AD.Maths.(u*@(transpose P.b)) in
+    let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in
+    let u = AD.Maths.(u *@ transpose P.b) in
     AD.Maths.(
       ((sum' (u *@ r * u) * cost_function t)
       + (sum' (dx_p *@ q * dx_p) * sigmoid ((t - tau) / F 20E-3))
       + (F 0.1 * (sum' (dx_vel *@ q * dx_vel) * sigmoid ((t - tau) / F 20E-3)))
-
-      + (F 1. * (sum' (dx_vel *@ q_start * dx_vel) *start)
-     +  ( (sum' (_dx_start *@ q_start * _dx_start) * start))
-      + (sum' (transpose torques *@t_mat * transpose torques) 
-        * sigmoid ((F P.t_prep - t) / F 2E-3))))
+      + ((F 1. * (sum' (dx_vel *@ q_start * dx_vel) * start))
+        + (sum' (_dx_start *@ q_start * _dx_start) * start)
+        + (sum' (transpose torques *@ t_mat * transpose torques)
+          * sigmoid ((F P.t_prep - t) / F 2E-3))))
       * __dt)
-
 
   let rl_u =
     (*Need to check this*)
     let rlu ~k ~x:_x ~u =
       let t = AD.Maths.(__dt * F (float_of_int k)) in
-      let c = let wp,wm = P.weighing_pm in 
-      AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)*F wp + sigmoid ((t - F P.t_prep) / F 2E-4)*F wm) in 
+      let c =
+        let wp, wm = P.weighing_pm in
+        AD.Maths.(
+          (sigmoid ((F P.t_prep - t) / F 2E-4) * F wp)
+          + (sigmoid ((t - F P.t_prep) / F 2E-4) * F wm))
+      in
       let r = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
-            let u = AD.Maths.(u*@(transpose P.b)) in 
-      AD.Maths.(u *@ r*@P.b * c * __dt)
+      let u = AD.Maths.(u *@ transpose P.b) in
+      AD.Maths.(u *@ r *@ P.b * c * __dt)
     in
-
     Some rlu
 
-    let rl_x = let rlx ~k ~x ~u:_u =
-          let _, x_state = unpack_full_state x 4 in
-          let thetas = unpack_pos x in
-
-          let t = AD.Maths.(__dt * F (float_of_int k)) in
-            let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in 
- 
-          let dx_p = AD.Maths.(tgt_pos - thetas) in
-let __c = AD.pack_arr P.c in 
-       
-          let dx_vel = unpack_vel x in
-
-          let dx_start = AD.Maths.(in_pos - thetas) in
-          let r_xstate =  AD.Maths.( x_state *@  (transpose __c)*@ t_mat *@ __c  * F 2. * sigmoid ((F P.t_prep - t) / F 2E-3))
-          in let r_xp1 = AD.Maths.(AD.F 2. * neg dx_p *@ q  * sigmoid ((t - tau) / F 20E-3))
-          in let r_xp2 = AD.Maths.(AD.F 2. * neg dx_start *@ q_start  * start)
-          in let r_xv1 =  AD.Maths.(dx_vel *@ q  * sigmoid ((t - tau) / F 20E-3) * F 0.2)
-          in let r_xv2 =  AD.Maths.(dx_vel *@ q_start  * start * F 2.)
-        in AD.Maths.((concatenate ~axis:1 [|r_xp1+r_xp2;r_xv1+r_xv2;r_xstate|])*__dt)
-
-        in 
-        Some rlx
+  let rl_x =
+    let rlx ~k ~x ~u:_u =
+      let _, x_state = unpack_full_state x 4 in
+      let thetas = unpack_pos x in
+      let t = AD.Maths.(__dt * F (float_of_int k)) in
+      let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in
+      let dx_p = AD.Maths.(tgt_pos - thetas) in
+      let __c = AD.pack_arr P.c in
+      let dx_vel = unpack_vel x in
+      let dx_start = AD.Maths.(in_pos - thetas) in
+      let r_xstate =
+        AD.Maths.(
+          x_state
+          *@ transpose __c
+          *@ t_mat
+          *@ __c
+          * F 2.
+          * sigmoid ((F P.t_prep - t) / F 2E-3))
+      in
+      let r_xp1 = AD.Maths.(AD.F 2. * neg dx_p *@ q * sigmoid ((t - tau) / F 20E-3)) in
+      let r_xp2 = AD.Maths.(AD.F 2. * neg dx_start *@ q_start * start) in
+      let r_xv1 = AD.Maths.(dx_vel *@ q * sigmoid ((t - tau) / F 20E-3) * F 0.2) in
+      let r_xv2 = AD.Maths.(dx_vel *@ q_start * start * F 2.) in
+      AD.Maths.(concatenate ~axis:1 [| r_xp1 + r_xp2; r_xv1 + r_xv2; r_xstate |] * __dt)
+    in
+    Some rlx
 
   let rl_uu =
     let rluu ~k ~x:_x ~u:_u =
       let t = AD.Maths.(__dt * F (float_of_int k)) in
-      let c = let wp,wm = P.weighing_pm in 
-      AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)*F wp + sigmoid ((t - F P.t_prep) / F 2E-4)*F wm) in 
+      let c =
+        let wp, wm = P.weighing_pm in
+        AD.Maths.(
+          (sigmoid ((F P.t_prep - t) / F 2E-4) * F wp)
+          + (sigmoid ((t - F P.t_prep) / F 2E-4) * F wm))
+      in
       let ma = Mat.(eye size_net *$ P.r_coeff) |> AD.pack_arr in
-      (AD.Maths.(P.b*@ ma*@ P.b * c * __dt))
-
+      AD.Maths.(P.b *@ ma *@ P.b * c * __dt)
     in
     Some rluu
-
 
   let rl_ux =
     let f ~k:_k ~x:_x ~u:_u = AD.F 0. in
     Some f
 
-
   let rl_xx =
     let rlxx ~k ~x:_x ~u:_u =
       let t = AD.Maths.(__dt * F (float_of_int k)) in
-        let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in 
+      let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in
       let mu =
         AD.Maths.(
           (AD.Mat.eye 2 * AD.F Defaults.q_coeff * __dt * sigmoid ((t - tau) / F 20E-3))
-
-          + (AD.F P.qs_coeff* AD.Mat.eye 2 * start * __dt))
+          + (AD.F P.qs_coeff * AD.Mat.eye 2 * start * __dt))
       in
       let mv =
         AD.Maths.(
-          __dt * AD.Mat.eye 2 * F Defaults.q_coeff * (F 0.1 * sigmoid ((t - tau) / F 20E-3)) +
-       
-          __dt * AD.Mat.eye 2 * F P.qs_coeff * start * F 1.)
-
+          (__dt
+          * AD.Mat.eye 2
+          * F Defaults.q_coeff
+          * (F 0.1 * sigmoid ((t - tau) / F 20E-3)))
+          + (__dt * AD.Mat.eye 2 * F P.qs_coeff * start * F 1.))
       in
       let mx =
         AD.Maths.(
           ((sigmoid ((F P.t_prep - t) / F 2E-3)
-      
-           * (transpose P.__c *@ t_mat* F 2. *@P.__c) ) 
+           * (transpose P.__c *@ t_mat * F 2. *@ P.__c))
           + (F Defaults.a_coeff * AD.Mat.eye size_net))
           * __dt)
       in
@@ -305,7 +308,6 @@ let __c = AD.pack_arr P.c in
     in
     Some rlxx
 
-
   let final_cost ~x ~k:_k =
     let q = Owl.Mat.(eye 2 *$ Defaults.q_coeff) |> AD.pack_arr in
     let fl =
@@ -317,14 +319,14 @@ let __c = AD.pack_arr P.c in
     in
     fl
 
-
   let fl_x = None
 
   (*let f ~k:_k ~x:_x = AD.F 0. in
     Some f*)
 
   let fl_xx = None
-end 
+end
+
 (*
 module C_End (P : Prms) = struct
   let n_theta = 4
@@ -515,13 +517,14 @@ module C_Uncertain (P : Prms) = struct
         (load_txt "results/inputs_beg/reach_1/traj_700"))
     |> AD.pack_arr
 
-    let __w = AD.pack_arr P.w
-    let __a = AD.Maths.((__w - AD.Mat.eye size_net)/ tau)
+  let __w = AD.pack_arr P.w
+  let __a = AD.Maths.((__w - AD.Mat.eye size_net) / tau)
   let __at = AD.Maths.transpose __a
   let __atinv = AD.Maths.inv __at
   let __ainv = AD.Maths.inv __a
   let idt = AD.Mat.eye n
-let a = AD.unpack_arr __a
+  let a = AD.unpack_arr __a
+
   let cost ~u ~x ~k =
     let _, x_ac = unpack_full_state x n_theta in
     let t = AD.Maths.(__dt * F (float_of_int k)) in
@@ -543,7 +546,6 @@ let a = AD.unpack_arr __a
     let _term3 = AD.Maths.(sum' (u *@ r * u)) in
     AD.Maths.((sqr _term1 + sqr _term2 + _term3) * __dt)
 
-
   let rl_u = None
 
   let rl_uu =
@@ -553,13 +555,11 @@ let a = AD.unpack_arr __a
     in
     Some rluu
 
-
   let rl_ux = None
 
   let rl_xx =
     let rlxx ~k:_k ~x:_x ~u:_u = AD.F 0. in
     Some rlxx
-
 
   let final_cost ~x ~k:_k =
     let q = Owl.Mat.(eye 2 *$ Defaults.q_coeff) |> AD.pack_arr in
@@ -571,7 +571,6 @@ let a = AD.unpack_arr __a
       AD.(Maths.(sum' (dx_p *@ q * dx_p) + sum' (dx_vel *@ q * dx_vel)))
     in
     AD.Maths.(F 1. * fl)
-
 
   let fl_x = None
   let fl_xx = None
@@ -1255,59 +1254,58 @@ module C_Sequential (P : Prms) = struct
   (*default setting of qcoeff = 1E-7*)
   let n_theta = 4
   let q = Mat.(eye 2 *$ (q_coeff *. 0.5)) |> AD.pack_arr
-   let r = Mat.(eye P.m *$ (P.r_coeff *. 0.5)) |> AD.pack_arr 
-
-  let t_mat = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr 
-
+  let r = Mat.(eye P.m *$ (P.r_coeff *. 0.5)) |> AD.pack_arr
+  let t_mat = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr
   let a_mat = Mat.(eye P.m *$ (Defaults.a_coeff *. 0.5)) |> AD.pack_arr
   let tau1 = AD.F (P.t_prep +. P.t_mov)
   let pause = Defaults.pause
   let tau2 = AD.F (P.t_prep +. P.t_mov +. pause)
-
-  let tau3 = AD.F (P.t_prep +. 2.*.P.t_mov +. pause)
+  let tau3 = AD.F (P.t_prep +. (2. *. P.t_mov) +. pause)
   let __dt = AD.F sampling_dt
   let target1 = P.target_theta.(0) |> AD.pack_arr
   let target2 = P.target_theta.(1) |> AD.pack_arr
   let tgt_pos1 = AD.Maths.get_slice [ []; [ 0; 1 ] ] target1
   let tgt_pos = tgt_pos1
   let tau = tau1
-
   let target = target1
   let tgt_pos2 = AD.Maths.get_slice [ []; [ 0; 1 ] ] target2
   let in_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] initial_theta
   let cost_function t = AD.Maths.(F 1. + (F 0. * t))
-  let q_start = Mat.(eye 2 *$ (P.qs_coeff *.0.5)) |> AD.pack_arr
+  let q_start = Mat.(eye 2 *$ (P.qs_coeff *. 0.5)) |> AD.pack_arr
   let q_start_coeff = P.qs_coeff
 
   let power u g =
     AD.pack_flt
       (Mat.sum' (Mat.map (fun x -> Maths.pow x g) (AD.unpack_arr (AD.primal' u))))
 
-
   let cost ~u ~x ~k =
     let thetas = unpack_pos x in
     let vel = unpack_vel x in
     let _, x_state = unpack_full_state x 4 in
-    let dx_p1 = AD.Maths.((tgt_pos1 - thetas)) in
+    let dx_p1 = AD.Maths.(tgt_pos1 - thetas) in
     let dx_p2 = AD.Maths.(tgt_pos2 - thetas) in
-    let dx_vel = AD.Maths.(F 1. *vel) in
+    let dx_vel = AD.Maths.(F 1. * vel) in
     let _dx_start = AD.Maths.(in_pos - thetas) in
     let t = AD.Maths.(__dt * F (float_of_int k)) in
     let torques = AD.Maths.(P.__c *@ transpose x_state) in
-    let start = AD.Maths.(F 1.*sigmoid ((F P.t_prep - t) / F 2E-4)) in 
-    let pause_s = AD.Maths.(F 0.1/F pause *sigmoid ((t - tau1) / F 2E-4)*sigmoid ((tau2 - t) / F 2E-4)) in 
-    let pause_f = AD.Maths.(F 1.* sigmoid ((t - tau3) / F 2E-4)) in 
-    AD.Maths.(((sum' (u *@ r * u) * cost_function t)
-      + (sum' (dx_p1 *@ q * dx_p1) * F 1. *pause_s + 
-      sum' (dx_vel *@ q *dx_vel )* pause_s * F 1.)
-      + (sum' (dx_p2 *@ q * dx_p2) *pause_f) + 
-      sum' (dx_vel *@ q *dx_vel )* pause_f 
-      + (F 1. * (sum' (dx_vel *@ q_start * dx_vel) *start)
-     +  ( (sum' (_dx_start *@ q_start * _dx_start) * start))
-      + (sum' (transpose torques *@t_mat * transpose torques) 
-        * sigmoid ((F P.t_prep - t) / F 2E-3))))
-      * __dt) 
-    
+    let start = AD.Maths.(F 1. * sigmoid ((F P.t_prep - t) / F 2E-4)) in
+    let pause_s =
+      AD.Maths.(
+        F 0.1 / F pause * sigmoid ((t - tau1) / F 2E-4) * sigmoid ((tau2 - t) / F 2E-4))
+    in
+    let pause_f = AD.Maths.(F 1. * sigmoid ((t - tau3) / F 2E-4)) in
+    AD.Maths.(
+      ((sum' (u *@ r * u) * cost_function t)
+      + ((sum' (dx_p1 *@ q * dx_p1) * F 1. * pause_s)
+        + (sum' (dx_vel *@ q * dx_vel) * pause_s * F 1.))
+      + (sum' (dx_p2 *@ q * dx_p2) * pause_f)
+      + (sum' (dx_vel *@ q * dx_vel) * pause_f)
+      + ((F 1. * (sum' (dx_vel *@ q_start * dx_vel) * start))
+        + (sum' (_dx_start *@ q_start * _dx_start) * start)
+        + (sum' (transpose torques *@ t_mat * transpose torques)
+          * sigmoid ((F P.t_prep - t) / F 2E-3))))
+      * __dt)
+
   let rl_u =
     (*Need to check this*)
     let rlu ~k ~x:_x ~u =
@@ -1318,32 +1316,40 @@ module C_Sequential (P : Prms) = struct
     in
     Some rlu
 
-    let rl_x = let rlx ~k ~x ~u:_u =
-          let _, x_state = unpack_full_state x 4 in
-          let thetas = unpack_pos x in
-
-          let t = AD.Maths.(__dt * F (float_of_int k)) in
-            let start = AD.Maths.(F 1.*sigmoid ((F P.t_prep - t) / F 2E-4)) in 
-            let pause_s = AD.Maths.(F 0.1/F pause *sigmoid ((t - tau1) /F 2E-4)*sigmoid ((tau2 - t) /F  2E-4)) in 
-            let pause_f = AD.Maths.(F 1.* sigmoid ((t - tau3) / F 2E-4)) in 
- 
-          let dx_p1 = AD.Maths.(((tgt_pos1 - thetas))) in
-          let dx_p2 = AD.Maths.(tgt_pos2 - thetas) in
-let __c = AD.pack_arr P.c in 
-       
-          let dx_vel = AD.Maths.(F 1. * unpack_vel x) in
-
-          let dx_start = AD.Maths.(in_pos - thetas) in
-          let r_xstate =  AD.Maths.( x_state *@  (transpose __c)*@ t_mat *@ __c  * F 2. * sigmoid ((F P.t_prep - t) / F 2E-3))
-          in let r_xp1 = AD.Maths.(AD.F 2. * neg dx_p1 *@ q  * F 1.*pause_s)
-          in let r_xp2 = AD.Maths.(AD.F 2. * neg dx_start *@ q_start  * start)
-        in let r_xp3 = AD.Maths.(AD.F 2. * neg dx_p2 *@ q  * pause_f)
-      in let r_vx1 = AD.Maths.(dx_vel *@q*F 2.* (pause_s*F 1. + pause_f))
-          in let r_xv2 =  AD.Maths.(dx_vel *@ q_start  * start * F 2.)
-        in AD.Maths.((concatenate ~axis:1 [|r_xp1+r_xp2+r_xp3;r_vx1 + r_xv2;r_xstate|])*__dt)
-
-        in 
-        Some rlx
+  let rl_x =
+    let rlx ~k ~x ~u:_u =
+      let _, x_state = unpack_full_state x 4 in
+      let thetas = unpack_pos x in
+      let t = AD.Maths.(__dt * F (float_of_int k)) in
+      let start = AD.Maths.(F 1. * sigmoid ((F P.t_prep - t) / F 2E-4)) in
+      let pause_s =
+        AD.Maths.(
+          F 0.1 / F pause * sigmoid ((t - tau1) / F 2E-4) * sigmoid ((tau2 - t) / F 2E-4))
+      in
+      let pause_f = AD.Maths.(F 1. * sigmoid ((t - tau3) / F 2E-4)) in
+      let dx_p1 = AD.Maths.(tgt_pos1 - thetas) in
+      let dx_p2 = AD.Maths.(tgt_pos2 - thetas) in
+      let __c = AD.pack_arr P.c in
+      let dx_vel = AD.Maths.(F 1. * unpack_vel x) in
+      let dx_start = AD.Maths.(in_pos - thetas) in
+      let r_xstate =
+        AD.Maths.(
+          x_state
+          *@ transpose __c
+          *@ t_mat
+          *@ __c
+          * F 2.
+          * sigmoid ((F P.t_prep - t) / F 2E-3))
+      in
+      let r_xp1 = AD.Maths.(AD.F 2. * neg dx_p1 *@ q * F 1. * pause_s) in
+      let r_xp2 = AD.Maths.(AD.F 2. * neg dx_start *@ q_start * start) in
+      let r_xp3 = AD.Maths.(AD.F 2. * neg dx_p2 *@ q * pause_f) in
+      let r_vx1 = AD.Maths.(dx_vel *@ q * F 2. * ((pause_s * F 1.) + pause_f)) in
+      let r_xv2 = AD.Maths.(dx_vel *@ q_start * start * F 2.) in
+      AD.Maths.(
+        concatenate ~axis:1 [| r_xp1 + r_xp2 + r_xp3; r_vx1 + r_xv2; r_xstate |] * __dt)
+    in
+    Some rlx
 
   let rl_uu =
     let rluu ~k ~x:_x ~u:_u =
@@ -1354,35 +1360,34 @@ let __c = AD.pack_arr P.c in
     in
     Some rluu
 
-
   let rl_ux =
     let f ~k:_k ~x:_x ~u:_u = AD.F 0. in
     Some f
 
-
   let rl_xx =
     let rlxx ~k ~x:_x ~u:_u =
       let t = AD.Maths.(__dt * F (float_of_int k)) in
-      let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in 
-      let pause_s = AD.Maths.(F 0.1/F pause *sigmoid ((t - tau1) /F 2E-4)*sigmoid ((tau2 - t) /F  2E-4)) in 
-      let pause_f = AD.Maths.(F 1.* sigmoid ((t - tau3) / F 2E-4)) in 
+      let start = AD.Maths.(sigmoid ((F P.t_prep - t) / F 2E-4)) in
+      let pause_s =
+        AD.Maths.(
+          F 0.1 / F pause * sigmoid ((t - tau1) / F 2E-4) * sigmoid ((tau2 - t) / F 2E-4))
+      in
+      let pause_f = AD.Maths.(F 1. * sigmoid ((t - tau3) / F 2E-4)) in
       let mu =
         AD.Maths.(
-          (AD.Mat.eye 2 * AD.F Defaults.q_coeff * __dt * F 1.*pause_s)
+          (AD.Mat.eye 2 * AD.F Defaults.q_coeff * __dt * F 1. * pause_s)
           + (AD.Mat.eye 2 * AD.F Defaults.q_coeff * __dt * pause_f)
-          + (AD.F P.qs_coeff* AD.Mat.eye 2 * start * __dt))
+          + (AD.F P.qs_coeff * AD.Mat.eye 2 * start * __dt))
       in
       let mv =
         AD.Maths.(
-        __dt* AD.Mat.eye 2*F q_coeff * (pause_s *F 1. + pause_f) +
-          __dt * AD.Mat.eye 2 * F P.qs_coeff * start)
-
+          (__dt * AD.Mat.eye 2 * F q_coeff * ((pause_s * F 1.) + pause_f))
+          + (__dt * AD.Mat.eye 2 * F P.qs_coeff * start))
       in
       let mx =
         AD.Maths.(
           ((sigmoid ((F P.t_prep - t) / F 2E-3)
-      
-           * (transpose P.__c *@ t_mat* F 2. *@P.__c) ) 
+           * (transpose P.__c *@ t_mat * F 2. *@ P.__c))
           + (F Defaults.a_coeff * AD.Mat.eye P.m))
           * __dt)
       in
@@ -1392,20 +1397,19 @@ let __c = AD.pack_arr P.c in
       let mf2 =
         AD.Maths.concatenate
           ~axis:1
-          [| AD.Mat.zeros (n_theta - 2) 2; AD.Maths.(F 1.*mv); AD.Mat.zeros (n_theta - 2) P.m |]
+          [| AD.Mat.zeros (n_theta - 2) 2
+           ; AD.Maths.(F 1. * mv)
+           ; AD.Mat.zeros (n_theta - 2) P.m
+          |]
       in
       let mf3 = AD.Maths.concatenate ~axis:1 [| AD.Mat.zeros P.m n_theta; mx |] in
       AD.Maths.concatenate ~axis:0 [| mf1; mf2; mf3 |]
     in
     Some rlxx
 
-
   let final_cost ~x:_ ~k:_k =
-    let fl =
-      AD.F 0.
-    in
+    let fl = AD.F 0. in
     fl
-
 
   let fl_x = None
 

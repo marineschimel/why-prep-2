@@ -54,7 +54,6 @@ module End_P = struct
     ; g_coeff = f x.g_coeff
     }
 
-
   let fold ?prefix ~init ~f x =
     let init = f init (x.c, with_prefix ?prefix "c") in
     let init = f init (x.t_coeff, with_prefix ?prefix "t_coeff") in
@@ -81,13 +80,11 @@ module Ramping_P = struct
     ; tau_mov = f x.tau_mov
     }
 
-
   let fold ?prefix ~init ~f x =
     let init = f init (x.c, with_prefix ?prefix "c") in
     let init = f init (x.t_coeff, with_prefix ?prefix "t_coeff") in
     f init (x.qs_coeff, with_prefix ?prefix "qs_coeff")
 end
-
 
 module Soft_End_P = struct
   type 'a prm =
@@ -107,7 +104,6 @@ module Soft_End_P = struct
     ; g_coeff = f x.g_coeff
     }
 
-
   let fold ?prefix ~init ~f x =
     let init = f init (x.c, with_prefix ?prefix "c") in
     let init = f init (x.t_coeff, with_prefix ?prefix "t_coeff") in
@@ -122,10 +118,14 @@ module Match_P = struct
 end
 
 module Match_Torques_P = struct
-  type 'a prm = { q_coeff : 'a; g_coeff :'a ; t_coeff:'a} [@@deriving accessors ~submodule:A]
+  type 'a prm =
+    { q_coeff : 'a
+    ; g_coeff : 'a
+    ; t_coeff : 'a
+    }
+  [@@deriving accessors ~submodule:A]
 
-  let map ~f x = { q_coeff = f x.q_coeff; g_coeff = f x.g_coeff ;
-  t_coeff = f x.t_coeff}
+  let map ~f x = { q_coeff = f x.q_coeff; g_coeff = f x.g_coeff; t_coeff = f x.t_coeff }
   let fold ?prefix ~init ~f x = f init (x.q_coeff, with_prefix ?prefix "q_coeff")
 end
 
@@ -147,13 +147,11 @@ module Successive_P = struct
     ; g_coeff = f x.g_coeff
     }
 
-
   let fold ?prefix ~init ~f x =
     let init = f init (x.c, with_prefix ?prefix "c") in
     let init = f init (x.t_coeff, with_prefix ?prefix "t_coeff") in
     f init (x.qs_coeff, with_prefix ?prefix "qs_coeff")
 end
-
 
 module Successive_Ramping_P = struct
   type 'a prm =
@@ -164,7 +162,7 @@ module Successive_Ramping_P = struct
     ; g_coeff : 'a
     ; tau_mov_1 : 'a
     ; tau_mov_2 : 'a
-    ; pause_coeff : 'a 
+    ; pause_coeff : 'a
     }
   [@@deriving accessors ~submodule:A]
 
@@ -176,9 +174,8 @@ module Successive_Ramping_P = struct
     ; g_coeff = f x.g_coeff
     ; tau_mov_1 = f x.tau_mov_1
     ; tau_mov_2 = f x.tau_mov_2
-    ; pause_coeff = f x.pause_coeff 
+    ; pause_coeff = f x.pause_coeff
     }
-
 
   let fold ?prefix ~init ~f x =
     let init = f init (x.c, with_prefix ?prefix "c") in
@@ -203,7 +200,6 @@ module End_Phi_P = struct
     ; t_coeff = f x.t_coeff
     ; g_coeff = f x.g_coeff
     }
-
 
   let fold ?prefix ~init ~f x =
     let init = f init (x.c, with_prefix ?prefix "c") in
@@ -231,13 +227,11 @@ module Max_Occupancy_P = struct
     ; prep_coeff = f x.prep_coeff
     }
 
-
   let fold ?prefix ~init ~f x =
     let init = f init (x.c, with_prefix ?prefix "c") in
     let init = f init (x.t_coeff, with_prefix ?prefix "t_coeff") in
     f init (x.qs_coeff, with_prefix ?prefix "qs_coeff")
 end
-
 
 module Acquired_Phi_P = struct
   type 'a prm =
@@ -258,7 +252,6 @@ module Acquired_Phi_P = struct
     ; g_coeff = f x.g_coeff
     ; rad_thres = f x.rad_thres
     }
-
 
   let fold ?prefix ~init ~f x =
     let init = f init (x.c, with_prefix ?prefix "c") in

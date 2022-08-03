@@ -38,7 +38,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
           | Some th -> Float.to_int ((task.t_prep +. task.t_movs.(0) +. th) /. task.dt)
           | None -> Float.to_int ((task.t_prep +. task.t_movs.(0)) /. task.dt))
 
-
       let cost ~theta =
         let cost_lik =
           L.neg_logp_t
@@ -52,14 +51,12 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
           let cost_u = cost_u ~k ~x ~u in
           AD.Maths.(cost_u + cost_lik)
 
-
       let m = m
       let n = n
 
       let rl_u =
         Option.map U.neg_jac_t ~f:(fun neg_jac_t ~theta ->
             neg_jac_t ~prms:theta.generative.prior ~task)
-
 
       let rl_x =
         Option.map L.neg_jac_t ~f:(fun neg_jac_t ~theta ->
@@ -71,7 +68,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
             in
             fun ~k ~x ~u:_ -> neg_jac_t ~k ~z_t:x)
 
-
       let rl_xx =
         Option.map L.neg_hess_t ~f:(fun neg_hess_t ~theta ->
             let neg_hess_t =
@@ -82,11 +78,9 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
             in
             fun ~k ~x ~u:_ -> neg_hess_t ~k ~z_t:x)
 
-
       let rl_uu =
         Option.map U.neg_hess_t ~f:(fun neg_hess_t ~theta ->
             neg_hess_t ~prms:theta.generative.prior ~task)
-
 
       let rl_ux = Some (fun ~theta:_ ~k:_ ~x:_ ~u:_ -> AD.Mat.zeros m n)
       let final_cost ~theta:_ ~k:_ ~x:_ = AD.F 0.
@@ -95,11 +89,9 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         let z = AD.Mat.zeros 1 n in
         Some (fun ~theta:_ ~k:_ ~x:_ -> z)
 
-
       let fl_xx =
         let z = AD.Mat.zeros n n in
         Some (fun ~theta:_ ~k:_ ~x:_ -> z)
-
 
       let dyn ~theta =
         let dyna =
@@ -110,7 +102,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         in
         fun ~k ~x ~u -> dyna ~k ~x ~u
 
-
       let dyn_x =
         Option.map D.dyn_x ~f:(fun d ~theta ->
             d
@@ -118,14 +109,12 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
               ~theta:theta.generative.dynamics
               ~task)
 
-
       let dyn_u =
         Option.map D.dyn_u ~f:(fun d ~theta ->
             d
               ~readout:(Owl_parameters.extract theta.readout.c)
               ~theta:theta.generative.dynamics
               ~task)
-
 
       let running_loss = cost
       let final_loss = final_cost
@@ -158,17 +147,17 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         List.init M.n_steps ~f:(fun k -> AD.pack_arr (Mat.get_slice [ [ k ] ] us))
     in
     (* try *)
-      let tau =
-        IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
-      in
-      let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
-      let quus = IP.differentiable_quus ~theta:prms x0 us in 
-      ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
-      , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
-      , IP.differentiable_loss ~theta:prms tau
-      , quus
-      , true )
-    (* with
+    let tau =
+      IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
+    in
+    let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
+    let quus = IP.differentiable_quus ~theta:prms x0 us in
+    ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
+    , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
+    , IP.differentiable_loss ~theta:prms tau
+    , quus
+    , true )
+  (* with
     | e ->
       Stdio.printf "%s %!" (Exn.to_string e);
       AD.Mat.zeros M.n_steps n, AD.Mat.zeros M.n_steps m, AD.F (-444.), List.init 1 ~f:(fun _ -> AD.Mat.zeros 1 1), false *)
@@ -176,7 +165,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
   let run ~ustars ~n ~m ~x0 ~prms task =
     let a, b, _, _, _ = solve ~u_init:ustars ~single_run:true ~n ~m ~x0 ~prms task in
     a, b
-
 
   let train
       ?max_iter

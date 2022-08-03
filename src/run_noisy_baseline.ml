@@ -13,7 +13,6 @@ let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which 
 let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
 
-
 let rad = Cmdargs.(get_float "-rad" |> default 0.5)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
@@ -31,11 +30,9 @@ let targets =
           let t1, t2 = Misc.pos_to_angles x (y +. 0.199112) in
           Mat.of_array [| t1; t2; 0.; 0. |] 1 (-1)))
 
-
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(in_dir "targets") (Mat.concatenate ~axis:0 targets))
-
 
 let beta = AD.F 1E-2
 
@@ -43,7 +40,7 @@ let beta = AD.F 1E-2
 let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
 let d2_phi_x x = AD.Maths.(diagm (F 0. * x)) *)
 let phi_x x = x
-let d_phi_x x = AD.Maths.((F 1. + F 0. * x))
+let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
 let d2_phi_x x = AD.Maths.(diagm (F 0. * x))
 
 (* let phi_x x = AD.Maths.(beta * AD.requad (x / beta))
@@ -53,7 +50,7 @@ let link_f x = phi_x x
 let target i = targets.(i)
 let dt = 2E-3
 let lambda_prep = lambda
-let lambda_mov = lambda *. 1000. 
+let lambda_mov = lambda *. 1000.
 let n_out = 2
 let n = 54
 let m = 50
@@ -64,7 +61,6 @@ let _ =
   Mat.save_txt
     ~out:(in_dir "prms")
     (Mat.of_array [| tau; lambda_prep; lambda_mov; dt; AD.unpack_flt beta; rad |] 1 (-1))
-
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 
@@ -78,8 +74,10 @@ let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/mini_w_rec" da
 
 
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
-let n_ = Int.(n-4)
-let c = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad / sqrt (of_int n_)) 2 n_)
+let n_ = Int.(n - 4)
+
+let c =
+  C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad / sqrt (of_int n_)) 2 n_)
 
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
 
@@ -87,11 +85,9 @@ let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/c" dir) (AD.unpack_arr c))
 
-
 let b = Mat.eye n_
+let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:20. n_ 1))
 
-let x0 = C.broadcast' (fun () -> 
-  AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:20. n_ 1))
 (*structure : get inputs from task, then from the same SOC just generating inputs, 
 then from yet another SOC
 Maybe do the same thing using 200 - 100 - 50 
@@ -120,7 +116,6 @@ let tasks =
         ; theta0
         ; tau = 150E-3
         })
-
 
 let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
@@ -191,7 +186,6 @@ let prms =
       let generative = Model.Generative_P.{ prior; dynamics; likelihood } in
       Model.Full_P.{ generative; readout })
 
-
 module I = Model.ILQR (U) (D0) (L0)
 
 let save_results suffix xs us =
@@ -200,7 +194,6 @@ let save_results suffix xs us =
   let rates = AD.unpack_arr (link_f (AD.pack_arr xs)) in
   Owl.Mat.save_txt ~out:(file "rates") rates;
   Owl.Mat.save_txt ~out:(file "us") (AD.unpack_arr us)
-
 
 (* let torque_err, target_err =
     Analysis_funs.cost_x
@@ -259,18 +252,27 @@ let replace_baseline prms x0 =
   let open Full_P.A in
   let open Generative_P.A in
   let open Owl_parameters in
-  let open Dynamics_typ in 
-  let b = Owl_parameters.extract prms.Full_P.generative.Generative_P.dynamics.Arm_Plus_P.b in
-  let a = Owl_parameters.extract prms.Full_P.generative.Generative_P.dynamics.Arm_Plus_P.a in
+  let open Dynamics_typ in
+  let b =
+    Owl_parameters.extract prms.Full_P.generative.Generative_P.dynamics.Arm_Plus_P.b
+  in
+  let a =
+    Owl_parameters.extract prms.Full_P.generative.Generative_P.dynamics.Arm_Plus_P.a
+  in
   let a_discrete =
-      let a = let n = AD.Mat.row_num a in
-      AD.Maths.(a - AD.Mat.eye n) 
+    let a =
+      let n = AD.Mat.row_num a in
+      AD.Maths.(a - AD.Mat.eye n)
     in
-    Linalg.D.(expm Mat.(AD.unpack_arr a *$ Float.(dt /. tau))) |> AD.pack_arr in 
-  let bbinv = AD.Linalg.linsolve AD.Maths.((transpose b)*@(b)) (AD.Mat.eye n_) in 
-  let x0 = AD.Maths.transpose x0 in 
-  let u_base = AD.Maths.(x0 + neg ((link_f x0)*@a_discrete)) |> fun z -> AD.Maths.(b*@bbinv*@(transpose z)) |> AD.Maths.transpose in
-  let _ = AD.Mat.print AD.Maths.(u_base*@b - x0 + ((link_f x0)*@a_discrete)) in 
+    Linalg.D.(expm Mat.(AD.unpack_arr a *$ Float.(dt /. tau))) |> AD.pack_arr
+  in
+  let bbinv = AD.Linalg.linsolve AD.Maths.(transpose b *@ b) (AD.Mat.eye n_) in
+  let x0 = AD.Maths.transpose x0 in
+  let u_base =
+    AD.Maths.(x0 + neg (link_f x0 *@ a_discrete))
+    |> fun z -> AD.Maths.(b *@ bbinv *@ transpose z) |> AD.Maths.transpose
+  in
+  let _ = AD.Mat.print AD.Maths.((u_base *@ b) - x0 + (link_f x0 *@ a_discrete)) in
   let new_prms =
     Accessor.map
       (generative @> dynamics @> Dynamics.Arm_Plus_P.A.bias)
@@ -278,29 +280,25 @@ let replace_baseline prms x0 =
   in
   new_prms prms
 
-
 let _ =
   let _ = save_prms "" prms in
   Array.mapi tasks ~f:(fun i t ->
       if Int.(i % C.n_nodes = C.rank)
       then (
         (* try *)
-          let xs, us, _l, _ =
-            I.solve
-              ~u_init:Mat.(gaussian ~sigma:0. 2001 m)
-              ~n:n
-              ~m
-              ~x0:t.x0
-              ~prms:
-                (replace_baseline
-                   prms
-                   AD.Maths.(get_slice [ [ 4; -1 ] ] (transpose t.x0)))
-              t
-          in
-          save_results (Printf.sprintf "%i" i) xs us))
-        (* with
+        let xs, us, _l, _ =
+          I.solve
+            ~u_init:Mat.(gaussian ~sigma:0. 2001 m)
+            ~n
+            ~m
+            ~x0:t.x0
+            ~prms:
+              (replace_baseline prms AD.Maths.(get_slice [ [ 4; -1 ] ] (transpose t.x0)))
+            t
+        in
+        save_results (Printf.sprintf "%i" i) xs us))
+(* with
         | _ -> ())) *)
-
 
 (* save_results (Printf.sprintf "%i" i) xs us n_target t_prep t;
         Mat.save_txt

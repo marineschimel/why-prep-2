@@ -3,7 +3,6 @@ open Owl
 include Dynamics_typ
 module AD = Algodiff.D
 
-
 module Integrate (D : Dynamics_T) = struct
   let integrate ~readout ~prms ~task =
     let dyn_k = D.dyn ~readout ~task ~theta:prms in
@@ -36,7 +35,6 @@ module Arm_Linear = struct
     let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
     let st = Arm.pack_state thetas in
     AD.Linalg.inv (M.inertia st)
-
 
   let ms ~readout ~prms:_ ~x =
     let open AD.Maths in
@@ -73,7 +71,6 @@ module Arm_Linear = struct
     in
     m12, m22
 
-
   let dyn ~readout ~theta ~task =
     let b = Owl_parameters.extract theta.b in
     let c = readout in
@@ -102,7 +99,6 @@ module Arm_Linear = struct
             |])
       and new_x = AD.Maths.(xs + dx) in
       AD.Maths.(concatenate ~axis:1 [| new_thetas; new_x |])
-
 
   let dyn_x =
     (* Marine to check this *)
@@ -136,7 +132,6 @@ module Arm_Linear = struct
         AD.Maths.((mat * _dt) + AD.Mat.eye n) |> AD.Maths.transpose
     in
     Some _dyn_x
-
 
   let dyn_u =
     let _dyn_u ~readout:_ ~theta ~task =
@@ -172,7 +167,6 @@ module Linear = struct
       let dx = AD.Maths.(((x *@ a) + (u *@ b)) * _dt) in
       AD.Maths.(x + dx)
 
-
   let dyn_x =
     (* Marine to check this *)
     let _dyn_x ~readout:_ ~theta ~task =
@@ -185,7 +179,6 @@ module Linear = struct
       fun ~k:_ ~x:_ ~u:_ -> AD.Maths.((a * _dt) + AD.Mat.eye n)
     in
     Some _dyn_x
-
 
   let dyn_u =
     let _dyn_u ~readout:_ ~theta ~task =
@@ -217,7 +210,6 @@ struct
     let st = Arm.pack_state thetas in
     AD.Linalg.linsolve (M.inertia st) (AD.Mat.eye 2)
 
-
   let ms ~readout ~task ~prms:_ ~x =
     let open AD.Maths in
     let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
@@ -253,7 +245,6 @@ struct
       (cst1 * mat1) + M._B
     in
     m12, m22
-
 
   let dyn ~readout ~theta ~task =
     let b = Owl_parameters.extract theta.b in
@@ -294,7 +285,6 @@ struct
             |])
       and new_x = AD.Maths.(xs + dx) in
       AD.Maths.(concatenate ~axis:1 [| new_thetas; new_x |])
-
 
   let dyn_x =
     (* Marine to check this *)
@@ -338,7 +328,6 @@ struct
     in
     None
 
-
   let dyn_u =
     let _dyn_u ~readout:_ ~theta ~task =
       let b = Owl_parameters.extract theta.b in
@@ -355,7 +344,7 @@ struct
         in
         AD.Maths.(transpose (mat * dt))
     in
-   None
+    None
 end
 
 module Arm_Discrete (X : sig
@@ -376,7 +365,6 @@ struct
     let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
     let st = Arm.pack_state thetas in
     AD.Linalg.linsolve (M.inertia st) (AD.Mat.eye 2)
-
 
   let ms ~readout ~task ~prms:_ ~x =
     let open AD.Maths in
@@ -414,7 +402,6 @@ struct
     in
     m12, m22
 
-
   let dyn ~readout ~theta ~task =
     let b = Owl_parameters.extract theta.b in
     let c = readout in
@@ -432,13 +419,12 @@ struct
       Linalg.D.(expm Mat.(AD.unpack_arr a *$ Float.(dt /. tau))) |> AD.pack_arr
     in
     (* let leak_discrete = AD.Maths.(exp (neg (F dt / F tau))) in *)
-
     fun ~k:_ ~x ~u ->
       let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
       let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
       let xst = AD.Maths.transpose xs in
       let s = Arm.pack_state thetas in
-      let next_x = AD.Maths.(phi_x xs *@ a_discrete + ((u + bias) *@ b)) in
+      let next_x = AD.Maths.((phi_x xs *@ a_discrete) + ((u + bias) *@ b)) in
       let tau =
         let r = AD.Maths.(phi_x xst - (F 0. * phi_x (transpose x_init))) in
         AD.Maths.(c *@ r) |> AD.Maths.transpose
@@ -459,7 +445,6 @@ struct
             |])
       and new_x = next_x in
       AD.Maths.(concatenate ~axis:1 [| new_thetas; new_x |])
-
 
   let dyn_x =
     let _dyn_x ~readout ~theta ~task =
@@ -502,7 +487,6 @@ struct
     in
     None
 
-
   let dyn_u =
     let _dyn_u ~readout:_ ~theta ~task =
       let b = Owl_parameters.extract theta.b in
@@ -522,9 +506,6 @@ struct
     None
 end
 
-
-
-
 module Arm_Gated_Plus (X : sig
   val phi_x : AD.t -> AD.t
   val d_phi_x : AD.t -> AD.t
@@ -543,7 +524,6 @@ struct
     let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
     let st = Arm.pack_state thetas in
     AD.Linalg.linsolve (M.inertia st) (AD.Mat.eye 2)
-
 
   let ms ~readout ~task ~prms:_ ~x =
     let open AD.Maths in
@@ -581,7 +561,6 @@ struct
     in
     m12, m22
 
-
   let dyn ~readout ~theta ~task =
     let b = Owl_parameters.extract theta.b in
     let c = readout in
@@ -605,7 +584,8 @@ struct
       in
       let tau =
         let r = AD.Maths.(phi_x xst) in
-        if k < n_prep then AD.Maths.(F 0. * c *@ r) |> AD.Maths.transpose 
+        if k < n_prep
+        then AD.Maths.(F 0. * c *@ r) |> AD.Maths.transpose
         else AD.Maths.(c *@ r) |> AD.Maths.transpose
       in
       (*Mat.save_txt
@@ -625,10 +605,7 @@ struct
       and new_x = AD.Maths.(xs + dx) in
       AD.Maths.(concatenate ~axis:1 [| new_thetas; new_x |])
 
-
-  let dyn_x =
-    None
-
+  let dyn_x = None
 
   let dyn_u =
     let _dyn_u ~readout:_ ~theta ~task =
@@ -648,8 +625,6 @@ struct
     in
     Some _dyn_u
 end
-
-
 
 module Nonlinear (X : sig
   val phi_x : AD.t -> AD.t
@@ -681,13 +656,8 @@ struct
       let new_x = AD.Maths.(x + dx) in
       new_x
 
-
-  let dyn_x =
-    None
-
-
-  let dyn_u =
-   None
+  let dyn_x = None
+  let dyn_u = None
 end
 
 module Integrator (X : sig
@@ -716,7 +686,7 @@ struct
     let _dt = AD.F dt in
     fun ~k ~x ~u ->
       let xs = AD.Maths.get_slice [ []; [ 0; -3 ] ] x in
-      let thetas = AD.Maths.get_slice [ []; [ -2; -1] ] x in
+      let thetas = AD.Maths.get_slice [ []; [ -2; -1 ] ] x in
       let xst = AD.Maths.transpose xs in
       let dx =
         AD.Maths.(((phi_x xs *@ a) - (xs / AD.F tau) + (phi_u (u + bias) *@ b)) * _dt)
@@ -726,23 +696,18 @@ struct
         AD.Maths.(c *@ r) |> AD.Maths.transpose
       in
       let dotdot_theta = AD.Maths.sum' tau in
-      let dot_theta = AD.Maths.(sum' (get_slice [[]; [-1]] x)) in 
-      let theta = AD.Maths.(sum' (get_slice [[]; [-2]] x)) in 
+      let dot_theta = AD.Maths.(sum' (get_slice [ []; [ -1 ] ] x)) in
+      let theta = AD.Maths.(sum' (get_slice [ []; [ -2 ] ] x)) in
       let new_thetas =
         AD.Maths.(
           of_arrays
-            [| [| AD.Maths.(theta + _dt * dot_theta)
-                ; AD.Maths.(dot_theta + _dt * dotdot_theta)
+            [| [| AD.Maths.(theta + (_dt * dot_theta))
+                ; AD.Maths.(dot_theta + (_dt * dotdot_theta))
                |]
             |])
       and new_x = AD.Maths.(xs + dx) in
       AD.Maths.(concatenate ~axis:1 [| new_x; new_thetas |])
 
-
-  let dyn_x =
-    None
-
-
-  let dyn_u =
-   None
+  let dyn_x = None
+  let dyn_u = None
 end

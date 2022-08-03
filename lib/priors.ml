@@ -12,7 +12,6 @@ module Gaussian = struct
   let init ?(am = 1.) ~lambda (set : Owl_parameters.setter) =
     { lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
 
-
   (* returns a column vector *)
 
   let neg_logp_t ~prms ~task =
@@ -28,8 +27,7 @@ module Gaussian = struct
     in
     fun ~k ~x:_ ~u ->
       let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
-      AD.Maths.(F 0.5 * (lam * l2norm_sqr' u))  
-
+      AD.Maths.(F 0.5 * (lam * l2norm_sqr' u))
 
   let neg_jac_t =
     let _jac_t ~prms ~task =
@@ -48,9 +46,6 @@ module Gaussian = struct
         AD.Maths.(u * lam)
     in
     Some _jac_t
-
-
-    
 
   let neg_hess_t =
     let _hess_t ~prms ~task =
@@ -84,14 +79,12 @@ module Log_barrier = struct
     ; a = set (AD.F 1.)
     }
 
-
   (* returns a column vector *)
 
   let neg_logp_t ~prms =
     let lambda = Owl_parameters.extract prms.lambda_prep in
     fun ~task:_ ~k:_ ~x:_ ~u ->
       AD.Maths.(lambda * sum' (sqr (neg (log u) + (F 1000. * u))))
-
 
   let neg_jac_t = None
   let neg_hess_t = None
@@ -105,7 +98,6 @@ module Sparse = struct
 
   let init ?(am = 1.) ~lambda (set : Owl_parameters.setter) =
     { lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
-
 
   let alpha = AD.F 200.
 
@@ -130,7 +122,6 @@ module Sparse = struct
         * (log (F 1. + exp (neg (alpha * u))) + log (F 1. + exp (alpha * u))))
       |> AD.Maths.sum'
 
-
   let neg_jac_t =
     let _jac_t ~prms ~task =
       let t_prep = task.t_prep in
@@ -148,7 +139,6 @@ module Sparse = struct
         AD.Maths.(u * lam)
     in
     None
-
 
   let neg_hess_t =
     let _hess_t ~prms ~task =
@@ -185,7 +175,6 @@ struct
   let init ?(am = 1.) ~lambda (set : Owl_parameters.setter) =
     { lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
 
-
   (* returns a column vector *)
 
   let neg_logp_t ~prms ~task =
@@ -202,7 +191,6 @@ struct
     fun ~k ~x:_ ~u ->
       let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
       AD.Maths.(F 0.5 * (lam * l2norm_sqr' (phi_u u)))
-
 
   let neg_jac_t =
     let _jac_t ~prms ~task =
@@ -223,7 +211,6 @@ struct
         AD.Maths.(u *@ du * lam)
     in
     Some _jac_t
-
 
   let neg_hess_t =
     let _hess_t ~prms ~task =
@@ -270,7 +257,6 @@ module Student = struct
     ; nu = set ~above:2.0 (AD.F nu)
     }
 
-
   let spatial_stds ~prms = Owl_parameters.extract prms.spatial_stds
   let kl_to_gaussian = `sampling_based
 
@@ -279,7 +265,6 @@ module Student = struct
     let nu = Owl_parameters.extract prms.nu in
     let sigma = AD.Maths.(sqrt ((nu - F 2.) / nu) * s) in
     nu, sigma
-
 
   let neg_logp_t ~prms ~task:_ =
     let nu, sigma = get_eff_prms ~prms in
@@ -306,7 +291,6 @@ module Student = struct
       in
       stu
 
-
   let neg_jac_t =
     let jac_t ~prms ~task:_ =
       let nu, sigma = get_eff_prms ~prms in
@@ -325,7 +309,6 @@ module Student = struct
         stu
     in
     Some jac_t
-
 
   let neg_hess_t =
     let hess_t ~prms ~task:_ =
@@ -347,8 +330,6 @@ module Student = struct
     Some hess_t
 end
 
-
-
 module Gaussian_Double = struct
   module P = Owl_parameters.Make (Gaussian_P)
   open Gaussian_P
@@ -357,7 +338,6 @@ module Gaussian_Double = struct
 
   let init ?(am = 1.) ~lambda (set : Owl_parameters.setter) =
     { lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
-
 
   (* returns a column vector *)
 
@@ -380,21 +360,19 @@ module Gaussian_Double = struct
       | None -> AD.F 1.
       | Some sl -> AD.F sl
     in
-    fun ~k ~x:_ ~u -> 
-      let lam = if k < n_prep then AD.Maths.(sl * lp) else 
-      if k > n_1 && k < n_2 then AD.Maths.(sl * lp)
-      else AD.Maths.(sl * lm) in
+    fun ~k ~x:_ ~u ->
+      let lam =
+        if k < n_prep
+        then AD.Maths.(sl * lp)
+        else if k > n_1 && k < n_2
+        then AD.Maths.(sl * lp)
+        else AD.Maths.(sl * lm)
+      in
       AD.Maths.(F 0.5 * (lam * l2norm_sqr' u))
 
-
-  let neg_jac_t =
-    None
-
-
-  let neg_hess_t =
-     None
+  let neg_jac_t = None
+  let neg_hess_t = None
 end
-
 
 module Gaussian_B = struct
   module P = Owl_parameters.Make (Gaussian_B_P)
@@ -403,8 +381,10 @@ module Gaussian_B = struct
   let requires_linesearch = false
 
   let init ?(am = 1.) ~lambda (set : Owl_parameters.setter) =
-    { b =  set (AD.Mat.gaussian 200 200); lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
-
+    { b = set (AD.Mat.gaussian 200 200)
+    ; lambda_prep = set (AD.F lambda)
+    ; lambda_mov = set (AD.F (lambda *. am))
+    }
 
   (* returns a column vector *)
 
@@ -421,19 +401,13 @@ module Gaussian_B = struct
     in
     let b = Owl_parameters.extract prms.b in
     fun ~k ~x:_ ~u ->
-      let u_eff = AD.Maths.(u*@b) in 
+      let u_eff = AD.Maths.(u *@ b) in
       let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
       AD.Maths.(F 0.5 * (lam * l2norm_sqr' u))
 
-
-  let neg_jac_t =
-    None
-
-  let neg_hess_t =
-    None
+  let neg_jac_t = None
+  let neg_hess_t = None
 end
-
-
 
 module Gaussian_Prior = struct
   module P = Owl_parameters.Make (Gaussian_P)
@@ -443,7 +417,6 @@ module Gaussian_Prior = struct
 
   let init ?(am = 1.) ~lambda (set : Owl_parameters.setter) =
     { lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
-
 
   (* returns a column vector *)
 
@@ -459,20 +432,17 @@ module Gaussian_Prior = struct
       | Some sl -> AD.F sl
     in
     fun ~k ~x:_ ~u ->
-      let m = AD.Mat.col_num u in 
+      let m = AD.Mat.col_num u in
       let cst = Float.(of_int m * log Const.pi2) in
       let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
-      AD.Maths.(F 0.5 * (F cst + lam * l2norm_sqr' u - sum' (log (lam)))) 
-      (* let fb = Owl_parameters.extract prms.first_bin in
+      AD.Maths.(F 0.5 * (F cst + (lam * l2norm_sqr' u) - sum' (log lam)))
+  (* let fb = Owl_parameters.extract prms.first_bin in
   let ell_s = Owl_parameters.extract prms.spatial_stds in
   let cst = Float.(of_int m * log Const.pi2) in
   fun ~k ~x:_ ~u ->
     let sigma = if k < n_beg then AD.Maths.(fb * ell_s) else ell_s in
     AD.Maths.(F 0.5 * (F cst + (F 2. * sum' (log sigma)) + l2norm_sqr' (u / sigma))) *)
 
-  let neg_jac_t =
-    None
-
-  let neg_hess_t =
-    None
+  let neg_jac_t = None
+  let neg_hess_t = None
 end

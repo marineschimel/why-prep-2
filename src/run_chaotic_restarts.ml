@@ -13,7 +13,6 @@ let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which 
 let results_dir =
   Cmdargs.(get_string "-rdir" |> force ~usage:"-rdir [where to save the key results]")
 
-
 let save_all = Cmdargs.(check "-save_all")
 
 let lambda =
@@ -42,17 +41,14 @@ let targets =
           let t1, t2 = Misc.pos_to_angles x (y +. 0.199112) in
           Mat.of_array [| t1; t2; 0.; 0. |] 1 (-1)))
 
-
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(in_dir "targets") (Mat.concatenate ~axis:0 targets))
 
-
 let beta = AD.F 1E-2
-
 let phi_x x = AD.Maths.(F amp * tanh x)
-let d_phi_x x = AD.Maths.(F amp * (F 1. - F 2. * (sqr (tanh x))))
-let d2_phi_x x = AD.Maths.(F amp * F (-2.) * tanh x * (d_phi_x x))
+let d_phi_x x = AD.Maths.(F amp * (F 1. - (F 2. * sqr (tanh x))))
+let d2_phi_x x = AD.Maths.(F amp * F (-2.) * tanh x * d_phi_x x)
 let link_f x = phi_x x
 let target i = targets.(i)
 let dt = 2E-3
@@ -68,15 +64,12 @@ let _ =
   Mat.save_txt
     ~out:(in_dir "prms")
     (Mat.of_array
-       [| tau; lambda_prep; lambda_mov; dt; AD.unpack_flt beta; rad_c; rad_w ; amp|]
+       [| tau; lambda_prep; lambda_mov; dt; AD.unpack_flt beta; rad_c; rad_w; amp |]
        1
        (-1))
 
-
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-
 let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.2; 0.3; 0.45; 0.5; 0.6 |]
-
 
 let eigenvalues m =
   let v = Linalg.D.eigvals m in
@@ -84,19 +77,13 @@ let eigenvalues m =
   let im = Dense.Matrix.Z.im v in
   Mat.(concat_horizontal (transpose re) (transpose im))
 
-
-let w =
-  C.broadcast' (fun () ->
-       Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m)
-
-
+let w = C.broadcast' (fun () -> Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m)
 let eigs = C.broadcast' (fun () -> eigenvalues w)
 
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/w" dir) w;
       Mat.save_txt ~out:(Printf.sprintf "%s/eigs" dir) eigs)
-
 
 let c =
   C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
@@ -111,7 +98,6 @@ let _ =
       Mat.save_txt
         ~out:(Printf.sprintf "%s/nullspace" dir)
         (AD.unpack_arr AD.Maths.(c *@ u0)))
-
 
 let _ =
   C.root_perform (fun () ->
@@ -129,11 +115,11 @@ let baseline_input =
   C.broadcast' (fun () ->
       AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose)
 
-
 let x0 =
-  let x0 = if perturb then AD.Maths.(x0 + AD.Arr.gaussian ~sigma:0.01 (AD.shape x0)) else x0 in  
+  let x0 =
+    if perturb then AD.Maths.(x0 + AD.Arr.gaussian ~sigma:0.01 (AD.shape x0)) else x0
+  in
   AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0 |> AD.Maths.transpose
-
 
 let tasks =
   Array.init
@@ -154,11 +140,9 @@ let tasks =
         ; tau = 150E-3
         })
 
-
 let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
 let epsilon = 1E-1
-
 
 module U = Priors.Gaussian
 
@@ -209,19 +193,16 @@ let prms =
       let generative = Model.Generative_P.{ prior; dynamics; likelihood } in
       Model.Full_P.{ generative; readout })
 
-
 module I = Model.ILQR (U) (D0) (L0)
 
 let summary_tasks =
   Array.init (Array.length t_preps) ~f:(fun _ ->
       Array.init n_targets ~f:(fun _ -> Mat.zeros 1 1, false))
 
-
 let get_idx t =
   let _ = Stdio.printf "ts are %f %f %!" t t_preps.(0) in
   let idx, _ = Array.findi_exn t_preps ~f:(fun _ tp -> Float.(t = tp)) in
   idx
-
 
 let save_results suffix xs us n_target n_prep task =
   let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
@@ -268,14 +249,13 @@ let save_results suffix xs us n_target n_prep task =
   let prep_idx = ue_prep /. ue_mov in
   let ratio_u_cost = input_cost_prep /. input_cost_mov in
   let summary =
-    let mat = Mat.of_array
-    [| t_prep; prep_idx; loss; input_cost_tot; torque_err; target_err; ratio_u_cost |]
-    1
-    (-1) in 
-    if Int.(t_to_target > 0) then 
-    ( mat
-    , true )
-else (mat, false)
+    let mat =
+      Mat.of_array
+        [| t_prep; prep_idx; loss; input_cost_tot; torque_err; target_err; ratio_u_cost |]
+        1
+        (-1)
+    in
+    if Int.(t_to_target > 0) then mat, true else mat, false
   in
   if save_all && Int.(t_to_target > 0)
   then (
@@ -303,76 +283,84 @@ else (mat, false)
     get_idx t_prep, n_target, summary)
   else get_idx t_prep, n_target, summary
 
-
-let full_tasks = C.broadcast' (fun () -> 
-  Array.init (Array.length tasks) ~f:(fun i -> tasks.(i)))
-
+let full_tasks =
+  C.broadcast' (fun () -> Array.init (Array.length tasks) ~f:(fun i -> tasks.(i)))
 
 let multiple_runs =
-Array.mapi full_tasks ~f:(fun i t ->
-    let u0s = Array.init n_restarts ~f:(fun _ -> Mat.(gaussian ~sigma:0.01 2001 m)) in 
-    let solves = Array.mapi u0s ~f:(fun j u0 -> 
-    if Int.(Int.(i + j) % (C.n_nodes) = C.rank)
-    then (
-      let n_target = Int.rem i n_targets in
-      let n_prep = Float.to_int (t.t_prep /. dt) in
-      let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-      let xs, us, l, success =
-        I.solve ~u_init:u0 ~n:(m + 4) ~m ~x0 ~prms t
-in if success then Some (t, xs,us, l) else None)
- else None) in solves) 
-
-let _ = C.root_perform (fun () ->
-  let summaries = Array.mapi multiple_runs ~f:(fun i res -> 
-    let res = Array.filter_opt res in 
-    let t, xs, us, l, success = 
-    match 
-    Array.min_elt ~compare:(fun x y ->
-      let _,_, _, l1 = x in
-      let _,_, _, l2 = y in
-      if Float.((AD.unpack_flt l1 - AD.unpack_flt l2) > 0.) then (-1) else 1) res
-    with |Some (a,b,c,d) -> a,b,c,d,true |None -> tasks.(0), AD.Mat.zeros 1 1, AD.Mat.zeros 1 1, AD.F 1000., false in 
-    if success then 
-    (let n_target = Int.rem i n_targets in
-    let n_prep = Float.to_int (t.t_prep /. dt) in
-    let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-      let idx, n_target, summary =
-        save_results
-          (Printf.sprintf "%i_%i" n_target t_prep_int)
-          xs
-          us
-          n_target
-          n_prep
-          t
+  Array.mapi full_tasks ~f:(fun i t ->
+      let u0s = Array.init n_restarts ~f:(fun _ -> Mat.(gaussian ~sigma:0.01 2001 m)) in
+      let solves =
+        Array.mapi u0s ~f:(fun j u0 ->
+            if Int.(Int.(i + j) % C.n_nodes = C.rank)
+            then (
+              let n_target = Int.rem i n_targets in
+              let n_prep = Float.to_int (t.t_prep /. dt) in
+              let t_prep_int = Float.to_int (1000. *. t.t_prep) in
+              let xs, us, l, success = I.solve ~u_init:u0 ~n:(m + 4) ~m ~x0 ~prms t in
+              if success then Some (t, xs, us, l) else None)
+            else None)
       in
-      if save_all
-      then (
-        Mat.save_txt
-          ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
-          (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-        save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t);
-       Some (idx, n_target, summary)) else None) |> Array.filter_opt
-in Array.iter summaries ~f:(fun (i, n, s) -> summary_tasks.(i).(n) <- s))
+      solves)
 
-
+let _ =
+  C.root_perform (fun () ->
+      let summaries =
+        Array.mapi multiple_runs ~f:(fun i res ->
+            let res = Array.filter_opt res in
+            let t, xs, us, l, success =
+              match
+                Array.min_elt
+                  ~compare:(fun x y ->
+                    let _, _, _, l1 = x in
+                    let _, _, _, l2 = y in
+                    if Float.(AD.unpack_flt l1 - AD.unpack_flt l2 > 0.) then -1 else 1)
+                  res
+              with
+              | Some (a, b, c, d) -> a, b, c, d, true
+              | None -> tasks.(0), AD.Mat.zeros 1 1, AD.Mat.zeros 1 1, AD.F 1000., false
+            in
+            if success
+            then (
+              let n_target = Int.rem i n_targets in
+              let n_prep = Float.to_int (t.t_prep /. dt) in
+              let t_prep_int = Float.to_int (1000. *. t.t_prep) in
+              let idx, n_target, summary =
+                save_results
+                  (Printf.sprintf "%i_%i" n_target t_prep_int)
+                  xs
+                  us
+                  n_target
+                  n_prep
+                  t
+              in
+              if save_all
+              then (
+                Mat.save_txt
+                  ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
+                  (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
+                save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t);
+              Some (idx, n_target, summary))
+            else None)
+        |> Array.filter_opt
+      in
+      Array.iter summaries ~f:(fun (i, n, s) -> summary_tasks.(i).(n) <- s))
 
 let _ = Stdio.printf "saved the summaries so far %!"
-
 
 let final_save =
   C.root_perform (fun () ->
       let eigs = eigenvalues w in
       let norm_eigs = Mat.l2norm ~axis:1 eigs in
       let max_eig = Mat.max' eigs in
-      let prefix = 
-        if perturb then (Printf.sprintf "%s/rad_%.3f_amp_%.3f_seed_%i_y" results_dir rad_w amp seed) else 
-          (Printf.sprintf "%s/rad_%.3f_amp_%.3f_seed_%i_n" results_dir rad_w amp seed) in 
+      let prefix =
+        if perturb
+        then Printf.sprintf "%s/rad_%.3f_amp_%.3f_seed_%i_y" results_dir rad_w amp seed
+        else Printf.sprintf "%s/rad_%.3f_amp_%.3f_seed_%i_n" results_dir rad_w amp seed
+      in
       let _ =
-        Misc.save_bin
-          (Printf.sprintf "%s_summaries" prefix)
-          summary_tasks; 
-          Mat.save_txt ~out:(Printf.sprintf "%s_eigs" prefix) eigs   
-          in
+        Misc.save_bin (Printf.sprintf "%s_summaries" prefix) summary_tasks;
+        Mat.save_txt ~out:(Printf.sprintf "%s_eigs" prefix) eigs
+      in
       let mean_across_tgts =
         Array.map summary_tasks ~f:(fun x ->
             let arr_mat = Array.map ~f:fst x in
@@ -399,13 +387,8 @@ let final_save =
           1
           (-1)
       in
-      Mat.save_txt
-        ~out:(Printf.sprintf "%s_mean_across" prefix)
-        mean_across_tgts;
-      Mat.save_txt
-        ~out:(Printf.sprintf "%s_full_summary" prefix)
-        full_summary)
-
+      Mat.save_txt ~out:(Printf.sprintf "%s_mean_across" prefix) mean_across_tgts;
+      Mat.save_txt ~out:(Printf.sprintf "%s_full_summary" prefix) full_summary)
 
 (* let full_summary =   *)
 

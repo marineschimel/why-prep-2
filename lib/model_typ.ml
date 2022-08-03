@@ -36,7 +36,6 @@ module Generative_P = struct
       ; likelihood = L.map ~f prms.likelihood
       }
 
-
     let fold ?prefix ~init ~f prms =
       let w = with_prefix ?prefix in
       let init = U.fold ~prefix:(w "prior") ~init ~f prms.prior in
@@ -61,7 +60,6 @@ module Full_P = struct
 
     let map ~f prms =
       { generative = G.map ~f prms.generative; readout = R.map ~f prms.readout }
-
 
     let fold ?prefix ~init ~f prms =
       let w = with_prefix ?prefix in

@@ -46,7 +46,6 @@ let task =
     ; tau = 150E-3
     }
 
-
 let save_results suffix xs us =
   let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
   let thetas, xs, us =
@@ -57,7 +56,6 @@ let save_results suffix xs us =
   Owl.Mat.save_txt ~out:(file "thetas") thetas;
   Owl.Mat.save_txt ~out:(file "xs") xs;
   Owl.Mat.save_txt ~out:(file "us") us
-
 
 let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
@@ -105,7 +103,6 @@ let prms0 =
   in
   Model.Generative_P.{ prior; dynamics; likelihood }
 
-
 let prms1 =
   let open Owl_parameters in
   let likelihood = Likelihoods.Match_P.{ q_coeff = (pinned : setter) (AD.F 1.) } in
@@ -126,7 +123,6 @@ let prms1 =
   in
   Model.Generative_P.{ prior; dynamics; likelihood }
 
-
 module I0 = Model.ILQR (U) (D0) (L0)
 module I1 = Model.ILQR (U) (D1) (L1)
 
@@ -135,7 +131,6 @@ let xs0, us0 = I0.solve ~arm:true ~n:_n ~m ~prms:prms0 task
 let _ =
   Mat.save_txt ~out:(Printf.sprintf "w_noprep/us_0") (AD.unpack_arr us0);
   Mat.save_txt ~out:(Printf.sprintf "w_noprep/xs_0") (AD.unpack_arr xs0)
-
 
 let n = 200
 

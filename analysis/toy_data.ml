@@ -3,17 +3,11 @@ open Lib
 open Defaults
 
 let dims = 16
-
 let n_reaches = 8
-
 let t_prep = 500
-
 let size_prep = 400
-
 let size_mov = 400
-
 let duration = 1300
-
 let n_dim = 8
 
 let init_prep =
@@ -67,7 +61,6 @@ let x_mov =
   Arr.reshape a [| shp.(0); shp.(1) |] |> Arr.to_arrays |> Mat.of_arrays
 
 let _ = Mat.save_txt ~out:"x" Mat.(x_prep @= x_mov)
-
 let n = Mat.col_num x_mov
 
 let cov_p =
@@ -78,7 +71,7 @@ let cov_m =
   let r = Mat.(x_mov - mean ~axis:0 x_mov) in
   Mat.(transpose r *@ r)
 
-let __cp, __cm = (AD.pack_arr cov_p, AD.pack_arr cov_m)
+let __cp, __cm = AD.pack_arr cov_p, AD.pack_arr cov_m
 
 (*Elsayed et al analysis : are the subspaces orthogonal?*)
 
@@ -92,7 +85,7 @@ let corr_m =
   let rr = Mat.(r / l2norm ~axis:0 r) in
   Mat.(transpose rr *@ rr)
 
-let _ = (Mat.save_txt ~out:"test_cp" corr_p, Mat.save_txt ~out:"test_cm" corr_m)
+let _ = Mat.save_txt ~out:"test_cp" corr_p, Mat.save_txt ~out:"test_cm" corr_m
 
 let pairwise_corr =
   let cp = Mat.reshape corr_p [| n * n; 1 |]
@@ -112,7 +105,6 @@ let cost prms =
   let sp = Mat.sum' (Mat.get_slice [ []; [ 0; n_dim - 1 ] ] sprep)
   and sm = Mat.sum' (Mat.get_slice [ []; [ 0; n_dim - 1 ] ] smov) in
   let orth_modes, _ = AD.Linalg.qr prms.w in
-
   let new_wp = AD.Maths.get_slice [ []; [ 0; n_dim - 1 ] ] orth_modes
   and new_wm = AD.Maths.get_slice [ []; [ n_dim; -1 ] ] orth_modes in
   let obj =
@@ -145,7 +137,7 @@ let wp, wm =
   let orth_modes, _ = AD.Linalg.qr prms.w in
   let new_wp = AD.Maths.get_slice [ []; [ 0; n_dim - 1 ] ] orth_modes
   and new_wm = AD.Maths.get_slice [ []; [ n_dim; -1 ] ] orth_modes in
-  (new_wp |> AD.unpack_arr, new_wm |> AD.unpack_arr)
+  new_wp |> AD.unpack_arr, new_wm |> AD.unpack_arr
 
 let _ =
   Mat.print (Mat.l2norm ~axis:0 wm);
@@ -168,7 +160,6 @@ let proj2d i =
     in
     Mat.of_arrays a
   in
-
   let proj_mov = reconstructed (proj x wm) wm in
   let proj_prep = reconstructed (proj x wp) wp in
   Mat.save_txt ~out:(Printf.sprintf "test_proj_prep_%i" i) proj_prep;
@@ -178,11 +169,10 @@ let captured_variance, top_mp, top_mv =
   let mp, sp, _ = Linalg.D.svd cov_p in
   let mv, sm, _ = Linalg.D.svd cov_m in
   let pct_varp, pct_varm =
-    (Mat.(cumsum ~axis:1 sp /$ sum' sp), Mat.(cumsum ~axis:1 sm /$ sum' sm))
+    Mat.(cumsum ~axis:1 sp /$ sum' sp), Mat.(cumsum ~axis:1 sm /$ sum' sm)
   in
   let top_mp, top_mv =
-    ( Mat.get_slice [ []; [ 0; 4 - 1 ] ] mp,
-      Mat.get_slice [ []; [ 0; 4 - 1 ] ] mv )
+    Mat.get_slice [ []; [ 0; 4 - 1 ] ] mp, Mat.get_slice [ []; [ 0; 4 - 1 ] ] mv
   in
   Mat.save_txt ~out:"pct_var_own" Mat.(pct_varp @= pct_varm);
   let x = Mat.(x_mov *@ top_mp *@ transpose top_mp) in
@@ -190,21 +180,22 @@ let captured_variance, top_mp, top_mv =
   let z = Mat.(transpose top_mv *@ cov_p *@ top_mv) in
   let zz = Mat.(transpose top_mp *@ cov_m *@ top_mp) in
   let xcent = Mat.(x - mean ~axis:0 x) in
-
   let ycent = Mat.(y - mean ~axis:0 y) in
   let _, ss, _ = Linalg.D.svd xcent in
   let _, tt, _ = Linalg.D.svd ycent in
   let _ =
-    Printf.printf "pct_var %f %f %!"
+    Printf.printf
+      "pct_var %f %f %!"
       (Mat.trace z /. Mat.sum' sp)
       (Mat.trace zz /. Mat.sum' sm)
   in
-  ( Mat.save_txt ~out:"test_pct_var"
+  ( Mat.save_txt
+      ~out:"test_pct_var"
       Mat.(
         (cumsum ~axis:1 (Mat.sqr tt) /$ sum' sp)
-        @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm)),
-    top_mp,
-    top_mv )
+        @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm))
+  , top_mp
+  , top_mv )
 
 let occupancy =
   let rs i =
@@ -215,37 +206,31 @@ let occupancy =
       in
       Mat.of_arrays a
     in
-
-    (reconstructed (proj x wp) wp, reconstructed (proj x wm) wm)
+    reconstructed (proj x wp) wp, reconstructed (proj x wm) wm
   in
-
   let rps =
-    Arr.concatenate ~axis:2
+    Arr.concatenate
+      ~axis:2
       (Array.init n_reaches (fun i ->
            let rp, _ = rs i in
-           let m =
-             Arr.reshape rp [| (Arr.shape rp).(0); (Arr.shape rp).(1); 1 |]
-           in
-
+           let m = Arr.reshape rp [| (Arr.shape rp).(0); (Arr.shape rp).(1); 1 |] in
            m))
   and rms =
-    Arr.concatenate ~axis:2
+    Arr.concatenate
+      ~axis:2
       (Array.init n_reaches (fun i ->
            let _, rm = rs i in
-           let m =
-             Arr.reshape rm [| (Arr.shape rm).(0); (Arr.shape rm).(1); 1 |]
-           in
-
+           let m = Arr.reshape rm [| (Arr.shape rm).(0); (Arr.shape rm).(1); 1 |] in
            m))
   in
   let vprep, vmov =
     let x = Arr.var ~axis:2 rps |> Arr.sum ~axis:1 |> Arr.to_array in
-    ( Mat.of_array x (-1) 1,
-      let x = Arr.var ~axis:2 rms |> Arr.sum ~axis:1 |> Arr.to_array in
+    ( Mat.of_array x (-1) 1
+    , let x = Arr.var ~axis:2 rms |> Arr.sum ~axis:1 |> Arr.to_array in
       Mat.of_array x (-1) 1 )
   in
-  ( Mat.save_txt ~out:"vprep" Mat.(vprep /$ max' vprep),
-    Mat.save_txt ~out:"vmov" Mat.(vmov /$ max' vmov) )
+  ( Mat.save_txt ~out:"vprep" Mat.(vprep /$ max' vprep)
+  , Mat.save_txt ~out:"vmov" Mat.(vmov /$ max' vmov) )
 
 let _ =
   Array.init n_reaches (fun i ->

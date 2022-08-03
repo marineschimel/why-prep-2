@@ -4,15 +4,10 @@ open Owl
 open Defaults *)
 
 let _ = Printexc.record_backtrace true
-
 let c_15 = Mat.load_txt "results/socs/rad_1.5/c"
-
 let c_2 = Mat.load_txt "results/socs/rad_2.0/c"
-
 let _ = Printf.printf "%f %f %!" (Mat.l2norm' c_15) (Mat.l2norm' c_2)
-
 let _ = Mat.print Mat.(c_15 *@ transpose c_15)
-
 let _ = Mat.print Mat.(c_2 *@ transpose c_2)
 
 (* 

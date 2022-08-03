@@ -33,7 +33,6 @@ let targets =
           [| t1; t2; 0.; 0. |])
       |> Mat.of_arrays)
 
-
 let _ = C.root_perform (fun () -> Mat.save_txt ~out:(in_dir "target_thetas") targets)
 let target i = Mat.row targets i
 let t_prep = 0.3
@@ -57,7 +56,6 @@ let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/x0" dir) (AD.unpack_arr x0))
 
-
 let u0 = phi_x x0
 let norm_u0 = AD.Maths.(l2norm_sqr' u0)
 let c = AD.Maths.(c - (c *@ u0 *@ transpose u0 / norm_u0))
@@ -67,15 +65,12 @@ let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/c0" dir) (AD.unpack_arr c))
 
-
 let baseline_input =
   C.broadcast' (fun () ->
       AD.Maths.(neg ((AD.pack_arr w *@ phi_x x0) - x0)) |> AD.Maths.transpose)
 
-
 let x0 =
   AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0 |> AD.Maths.transpose
-
 
 let tasks =
   C.broadcast' (fun () ->
@@ -94,7 +89,6 @@ let tasks =
             ; theta0
             ; tau = 150E-3
             }))
-
 
 let _ = C.print (Printf.sprintf "array len : %i %!" (Array.length tasks))
 
@@ -151,7 +145,6 @@ let prms =
       let generative = Model.Generative_P.{ prior; dynamics; likelihood } in
       Model.Full_P.{ generative; readout })
 
-
 module I = Model.ILQR (U) (D) (L)
 
 let project_c c =
@@ -160,7 +153,6 @@ let project_c c =
   let norm_c = AD.Maths.l2norm' c in
   (learned : setter)
     AD.Maths.((c - (c *@ u0 *@ transpose u0 / norm_u0)) / norm_c * norm_c0)
-
 
 let loss ~u_init ~prms t =
   let prms =
@@ -177,7 +169,6 @@ let loss ~u_init ~prms t =
   let c = Owl_parameters.extract prms.readout.c in
   AD.Maths.((l + (F 0.01 * l2norm_sqr' c)) / F (Float.of_int n_targets)), AD.unpack_arr us
 
-
 let save_results suffix prms tasks =
   Array.iteri tasks ~f:(fun i t ->
       if Int.(i % C.n_nodes = C.rank)
@@ -192,7 +183,6 @@ let save_results suffix prms tasks =
         Owl.Mat.save_txt ~out:(file "thetas") thetas;
         Owl.Mat.save_txt ~out:(file "xs") xs;
         Owl.Mat.save_txt ~out:(file "us") us))
-
 
 let final_prms =
   let in_each_iteration ~prms k =

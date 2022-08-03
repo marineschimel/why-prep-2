@@ -4,41 +4,31 @@ let _ = Printexc.record_backtrace true
 
 (*First, analysis of the scaled trajectories*)
 let scaled_traj t_prep =
-  Mat.load_txt
-    (Printf.sprintf "scaling/scaled_traj_%i" (int_of_float (1000. *. t_prep)))
+  Mat.load_txt (Printf.sprintf "scaling/scaled_traj_%i" (int_of_float (1000. *. t_prep)))
   |> fun x ->
-  Mat.get_slice [ [ 1; -1 ]; [ 1; -1 ] ] x |> fun m ->
-  Arr.reshape m [| (Arr.shape m).(0); (Arr.shape m).(1); 1 |]
+  Mat.get_slice [ [ 1; -1 ]; [ 1; -1 ] ] x
+  |> fun m -> Arr.reshape m [| (Arr.shape m).(0); (Arr.shape m).(1); 1 |]
 
 let tpreps = [| 0.05; 0.1; 0.3; 0.5; 0.6; 0.8 |]
 
 let scaled_trajs =
-  Array.map (fun t -> scaled_traj t) tpreps |> fun z ->
-  Arr.concatenate ~axis:2 z
+  Array.map (fun t -> scaled_traj t) tpreps |> fun z -> Arr.concatenate ~axis:2 z
 
 let std_st = Arr.(var ~axis:2 scaled_trajs)
-
 let mean_st = Arr.l2norm_sqr ~axis:2 scaled_trajs
-
 let scaled_diff = Arr.((scaled_trajs - mean_st) / std_st)
-
-let n, m, i =
-  ((Arr.shape std_st).(0), (Arr.shape std_st).(1), (Arr.shape std_st).(2))
-
+let n, m, i = (Arr.shape std_st).(0), (Arr.shape std_st).(1), (Arr.shape std_st).(2)
 let _ = Printf.printf "%i %i %i %!" n m i
-
 let err_neurons = Arr.mean ~axis:0 Arr.(std_st / mean_st)
 
 let _ =
-  Mat.save_txt ~out:"scaling/err_neurons"
-    (Mat.sqrt (Arr.reshape err_neurons [| m; 1 |]))
+  Mat.save_txt ~out:"scaling/err_neurons" (Mat.sqrt (Arr.reshape err_neurons [| m; 1 |]))
 
 let corr =
   let get_ac ~tprep =
     let y =
       Mat.load_txt
-        (Printf.sprintf "scaling/scaled_traj_%i"
-           (int_of_float (tprep *. 1000.)))
+        (Printf.sprintf "scaling/scaled_traj_%i" (int_of_float (tprep *. 1000.)))
     in
     Mat.reshape y [| 1; Mat.row_num y * Mat.col_num y |]
   in

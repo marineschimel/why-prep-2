@@ -12,7 +12,7 @@ let n_e = Maths.round (0.8 *. float n) |> int_of_float
 let n_i = n - n_e
 let p_con = Cmdargs.(get_float "-p_con" |> default 0.2) (* exc. connection density *)
 
-let radius = Cmdargs.(get_float "-radius" |> default 1.5)
+let radius = Cmdargs.(get_float "-radius" |> default 5.0)
 let rhs = Mat.(neg (eye n))
 let dc_eval = -10.
 
@@ -35,7 +35,6 @@ let normalize w =
     Mat.set w i i 0.
   done
 
-
 (* initial W *)
 let w =
   let w = Mat.zeros n n in
@@ -57,19 +56,17 @@ let w =
   normalize w;
   w
 
-
 let eigenvalues m =
   let v = Linalg.D.eigvals m in
   let re = Dense.Matrix.Z.re v in
   let im = Dense.Matrix.Z.im v in
   Mat.(concat_horizontal (transpose re) (transpose im))
 
-
 let spectral_abscissa m = Linalg.D.eig m |> snd |> Dense.Matrix.Z.re |> Mat.max'
 
 let save ?step label =
   let w_eigs = eigenvalues w in
-  Mat.(save_txt w ~out:(in_dir (sprintf "w_%s" label)));
+  Mat.(save_txt w ~out:(in_dir (sprintf "w" label)));
   Mat.save_txt w_eigs ~out:(in_dir (sprintf "w_%s_eig" label));
   if save_all
   then (
@@ -77,18 +74,16 @@ let save ?step label =
     | Some s -> Mat.save_txt w_eigs ~out:(in_dir (sprintf "movie/eig%i" s))
     | None -> ())
 
-
 let save_training sas =
   [| sas |> List.rev |> Array.of_list |]
   |> Mat.of_arrays
   |> Mat.transpose
   |> Mat.save_txt ~out:(in_dir "training_info")
 
-
 let rec iterate k sas =
   if k mod 10 = 0
   then (
-    save ~step:(k / 10) (Printf.sprintf "rec_%.1f_%.1f_%.1f" radius sa_tgt p_con);
+    save ~step:(k / 10) (Printf.sprintf "rec_11");
     if Cmdargs.(check "-save_training") then save_training sas);
   let sa = spectral_abscissa w in
   printf "\riteration %5i | sa = %.5f%!" k sa;
@@ -102,7 +97,6 @@ let rec iterate k sas =
   Mat.(set_slice i w (neg (relu (neg (get_slice i w - (eta $* get_slice i grad))))));
   normalize w;
   if sa > sa_tgt then iterate (k + 1) (sa :: sas) else ()
-
 
 let () =
   if save_all then save "init";

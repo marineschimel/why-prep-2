@@ -38,5 +38,4 @@ let run_noisy ~i ~t_prep ~epsilon =
     ~out:(Printf.sprintf "noisy_thetas_%i_%i" i Float.(to_int (1000. *. t_prep)))
     thetas
 
-
 let t_preps = [| 0.; 0.01; 0.02; 0.05; 0.2; 0.3; 0.5; 0.6; 0.8; 1. |]

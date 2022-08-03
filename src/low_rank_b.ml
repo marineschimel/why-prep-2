@@ -12,15 +12,11 @@ let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which 
 let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
 
-let scale_mov =
-  Cmdargs.(get_float "-scale_mov" |> default 1.)
-  
-let scale_prep =
-  Cmdargs.(get_float "-scale_prep" |> default 1.)
+let scale_mov = Cmdargs.(get_float "-scale_mov" |> default 1.)
+let scale_prep = Cmdargs.(get_float "-scale_prep" |> default 1.)
 
 let results_dir =
   Cmdargs.(get_string "-rdir" |> force ~usage:"-rdir [where to save the key results]")
-
 
 let save_all = Cmdargs.(check "-save_all")
 let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.5)
@@ -41,14 +37,11 @@ let targets =
           let t1, t2 = Misc.pos_to_angles x (y +. 0.199112) in
           Mat.of_array [| t1; t2; 0.; 0. |] 1 (-1)))
 
-
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(in_dir "targets") (Mat.concatenate ~axis:0 targets))
 
-
 let beta = AD.F 1E-2
-
 let phi_x x = x
 let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
 let d2_phi_x x = AD.Maths.(diagm (F 0. * x))
@@ -74,19 +67,20 @@ let n_output = 2
 let _ =
   Mat.save_txt
     ~out:(in_dir "prms")
-    (Mat.of_array [| tau; lambda_prep; lambda_mov; dt; AD.unpack_flt beta; rad_c |] 1 (-1))
-
+    (Mat.of_array
+       [| tau; lambda_prep; lambda_mov; dt; AD.unpack_flt beta; rad_c |]
+       1
+       (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 
 (* let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.2; 0.3; 0.45; 0.5; 0.6; 0.8; 1. |] *)
 
 (* let t_preps = [| 0.05; 0.1 |] *)
-let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.2; 0.3; 0.45; 0.5; 0.6 ; 0.8; 1.|]
+let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.2; 0.3; 0.45; 0.5; 0.6; 0.8; 1. |]
 
 let w =
   C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)))
-
 
 (* let _ =
   C.root_perform (fun () ->
@@ -95,7 +89,9 @@ let w =
 
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 
-let c = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
+let c =
+  C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
+
 let x0 = C.broadcast' (fun () -> AD.Maths.(F 0. * AD.Mat.uniform ~a:5. ~b:15. m 1))
 
 let eigenvalues m =
@@ -104,26 +100,22 @@ let eigenvalues m =
   let im = Dense.Matrix.Z.im v in
   Mat.(concat_horizontal (transpose re) (transpose im))
 
-
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
 
 (* let x0 =
   C.broadcast' (fun () ->
       AD.Maths.transpose (AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/x0" dir)))) *)
 
-
-
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/c" dir) (AD.unpack_arr c))
-
 
 (* 
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/x0" dir) (AD.unpack_arr x0)) *)
 
-let b = Mat.(gaussian dim_b m) |> fun x -> Mat.(x / l2norm ~axis:1 x) 
+let b = Mat.(gaussian dim_b m) |> fun x -> Mat.(x / l2norm ~axis:1 x)
 
 (*structure : get inputs from task, then from the same SOC just generating inputs, 
 then from yet another SOC
@@ -141,16 +133,12 @@ what about one population receiving modulated inputs about the target?
   C.broadcast' (fun () ->
       AD.Maths.transpose (AD.pack_arr (Mat.load_txt (Printf.sprintf "%s/x0" dir)))) *)
 
-let baseline_input =
-  C.broadcast' (fun () ->
-    AD.Mat.zeros 1 dim_b)
-  (* C.broadcast' (fun () ->
+let baseline_input = C.broadcast' (fun () -> AD.Mat.zeros 1 dim_b)
+(* C.broadcast' (fun () ->
       AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose) *)
-
 
 let x0 =
   AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0 |> AD.Maths.transpose
-
 
 let tasks =
   Array.init
@@ -170,7 +158,6 @@ let tasks =
         ; theta0
         ; tau = 150E-3
         })
-
 
 let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
@@ -233,7 +220,7 @@ let prms =
       in
       let prior =
         Priors.Gaussian_B_P.
-          { b =  (pinned : setter) (AD.pack_arr b)
+          { b = (pinned : setter) (AD.pack_arr b)
           ; lambda_prep = (pinned : setter) (AD.F lambda_prep)
           ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
           }
@@ -242,19 +229,16 @@ let prms =
       let generative = Model.Generative_P.{ prior; dynamics; likelihood } in
       Model.Full_P.{ generative; readout })
 
-
 module I = Model.ILQR (U) (D0) (L0)
 
 let summary_tasks =
   Array.init (Array.length t_preps) ~f:(fun _ ->
       Array.init n_targets ~f:(fun _ -> Mat.zeros 1 1, false))
 
-
 let get_idx t =
   let _ = Stdio.printf "ts are %f %f %!" t t_preps.(0) in
   let idx, _ = Array.findi_exn t_preps ~f:(fun _ tp -> Float.(t = tp)) in
   idx
-
 
 let save_results suffix xs us n_target n_prep task =
   let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
@@ -333,7 +317,6 @@ let save_results suffix xs us n_target n_prep task =
     get_idx t_prep, n_target, summary)
   else get_idx t_prep, n_target, summary
 
-
 (*one for each target/prep time
 also want to save the total prep index + loss ratio for 0/500 and max eig and rad there*)
 let summaries, try_tasks =
@@ -348,7 +331,13 @@ let summaries, try_tasks =
         let t_prep_int = Float.to_int (1000. *. t.t_prep) in
         let _ = Stdio.printf "try tasks" in
         let xs, us, l, success =
-          I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 dim_b) ~n:(m + 4) ~m:dim_b ~x0 ~prms t
+          I.solve
+            ~u_init:Mat.(gaussian ~sigma:0. 2001 dim_b)
+            ~n:(m + 4)
+            ~m:dim_b
+            ~x0
+            ~prms
+            t
         in
         let idx, n_target, summary =
           save_results
@@ -375,13 +364,11 @@ let summaries, try_tasks =
       ( v1 |> Array.to_list |> List.concat |> Array.of_list
       , v2 |> Array.to_list |> List.concat |> Array.of_list ))
 
-
 let _ = Stdio.printf "ran the summaries %!"
 
 let save_summaries =
   C.root_perform (fun () ->
       Array.iter summaries ~f:(fun (i, n, s) -> summary_tasks.(i).(n) <- s))
-
 
 let _ = Stdio.printf "saved the summaries so far %!"
 
@@ -396,7 +383,13 @@ let reran_summaries, more_saving =
             let n_prep = Float.to_int (1000. *. t.t_prep /. dt) in
             let t_prep_int = Float.to_int (1000. *. t.t_prep) in
             let xs, us, l, success =
-            I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 dim_b) ~n:(m + 4) ~m:dim_b ~x0 ~prms t
+              I.solve
+                ~u_init:Mat.(gaussian ~sigma:0. 2001 dim_b)
+                ~n:(m + 4)
+                ~m:dim_b
+                ~x0
+                ~prms
+                t
             in
             let idx, n_target, summary =
               save_results
@@ -431,7 +424,6 @@ let reran_summaries, more_saving =
   else
     C.broadcast' (fun () -> Array.init 1 ~f:(fun _ -> 1, 1, (Mat.zeros 1 1, true)), false)
 
-
 let _ = Stdio.printf "saving summaries 2 %!"
 
 let _ =
@@ -439,7 +431,6 @@ let _ =
   then
     C.root_perform (fun () ->
         Array.iter reran_summaries ~f:(fun (i, n, s) -> summary_tasks.(i).(n) <- s))
-
 
 let final_save =
   C.root_perform (fun () ->
@@ -484,7 +475,6 @@ let final_save =
       Mat.save_txt
         ~out:(Printf.sprintf "%s/rad_%i_seed_%i_full_summary" results_dir rad_w seed)
         full_summary)
-
 
 (* let full_summary =   *)
 

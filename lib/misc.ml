@@ -1,7 +1,7 @@
 open Owl
 module Z = Dense.Matrix.Z
-open Arm.Defaults 
-module M = Arm.Make(Arm.Defaults)
+open Arm.Defaults
+module M = Arm.Make (Arm.Defaults)
 
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir]")
 let in_dir s = Printf.sprintf "%s/%s" dir s
@@ -10,7 +10,6 @@ let save_bin filename m =
   let output = open_out filename in
   Marshal.to_channel output m [ Marshal.No_sharing ];
   close_out output
-
 
 (* reads whatever was saved using [save_bin] *)
 let read_bin filename =
@@ -22,16 +21,13 @@ let read_bin filename =
     close_in input;
     m)
 
-
 let print_dim_2d x =
   let shp = Owl.Arr.shape x in
   Printf.printf "%i, %i\n%!" shp.(0) shp.(1)
 
-
 let print_dim_3d x =
   let shp = Owl.Arr.shape x in
   Printf.printf "%i, %i, %i\n%!" shp.(0) shp.(1) shp.(2)
-
 
 let stack ?(axis = 0) xs =
   let shp = Owl.Arr.shape xs.(0) in
@@ -52,11 +48,9 @@ let stack ?(axis = 0) xs =
   in
   Owl.Arr.concatenate ~axis y
 
-
 let print_algodiff_dim x =
   let shp = Algodiff.D.shape x in
   Printf.printf "%i, %i\n%!" shp.(0) shp.(1)
-
 
 (* participation_ratio [x] does PCA and calculate (sum_i lambda_i)^2 /. (sum_i lambda_i^2) 
 x has dimensions n x n_samples  *)
@@ -66,15 +60,14 @@ let participation_ratio x =
   let v = Mat.sqr s in
   Maths.sqr Mat.(sum' v) /. Mat.(sum' (sqr v))
 
-
 let transform a =
   let n = Mat.row_num a in
   let v, lam = Linalg.D.eig a in
   let data = List.init n (fun i -> Z.get lam 0 i, Z.col v i) in
   let rec reorder data accu =
     match data with
-    | []                         -> List.rev accu
-    | [ (_, v) ]                 -> List.rev (Z.re v :: accu)
+    | [] -> List.rev accu
+    | [ (_, v) ] -> List.rev (Z.re v :: accu)
     | (l1, v1) :: (l2, v2) :: tl ->
       if Complex.(norm (sub (conj l1) l2)) < 1E-8
       then reorder tl (Z.re v1 :: Z.im v1 :: accu)
@@ -83,15 +76,14 @@ let transform a =
   let v = reorder data [] |> Array.of_list |> Mat.concatenate ~axis:1 in
   Mat.(inv v *@ a *@ v), v
 
-
-  let pos_to_angles x y = 
-    let ct2 = Maths.((sqr x +. sqr y -. sqr _L1 -. sqr _L2) /. (2. *. _L1 *. _L2)) in
-    let st2 = Maths.(sqrt (1. -. sqr ct2)) in
-    let t2 = Maths.acos ct2 in
-    let alpha = (_L1 +. (_L2 *. ct2)) /. (_L2 *. st2)
-    and bet = _L2 *. st2
-    and g = Maths.(neg (_L1 +. (_L2 *. ct2))) in
-    let st1 = (x -. (alpha *. y)) /. ((alpha *. g) -. bet) in
-    let ct1 = Maths.(sqrt (1. -. sqr st1)) in
-    let t1 = Maths.atan (st1 /. ct1) in
-    t1, t2
+let pos_to_angles x y =
+  let ct2 = Maths.((sqr x +. sqr y -. sqr _L1 -. sqr _L2) /. (2. *. _L1 *. _L2)) in
+  let st2 = Maths.(sqrt (1. -. sqr ct2)) in
+  let t2 = Maths.acos ct2 in
+  let alpha = (_L1 +. (_L2 *. ct2)) /. (_L2 *. st2)
+  and bet = _L2 *. st2
+  and g = Maths.(neg (_L1 +. (_L2 *. ct2))) in
+  let st1 = (x -. (alpha *. y)) /. ((alpha *. g) -. bet) in
+  let ct1 = Maths.(sqrt (1. -. sqr st1)) in
+  let t1 = Maths.atan (st1 /. ct1) in
+  t1, t2

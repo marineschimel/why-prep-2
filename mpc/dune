@@ -1,6 +1,15 @@
 (executables
  (names ilqr_mpc params mpc_cost)
- (libraries owl owl-ode owl-ode-sundials cmdargs owl-opt owl-opt-lbfgs arm
-   lib ilqr core)
+ (libraries
+  owl
+  owl-ode
+  owl-ode-sundials
+  cmdargs
+  owl-opt
+  owl-opt-lbfgs
+  arm
+  lib
+  ilqr
+  core)
  (preprocess
   (pps ppx-owl-opt)))

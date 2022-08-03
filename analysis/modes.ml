@@ -18,7 +18,6 @@ let softmax x =
   let m = Mat.(std ~axis:0 x +$ 0.5) in
   Mat.(x / m)
 
-
 let preprocessed_data =
   let load i =
     let m = Mat.load_txt Printf.(sprintf "reach_1/reach_%i/traj_%i" i t_prep) in
@@ -32,7 +31,6 @@ let preprocessed_data =
     Arr.reshape a [| (Arr.shape a).(0); (Arr.shape a).(1) |]
   in
   mean_data, Mat.of_arrays (Arr.to_arrays dat)
-
 
 let c = Mat.load_txt (in_dir "c")
 let w = Mat.load_txt (in_dir "w")
@@ -74,7 +72,6 @@ let x_prep, x_mov, mean_data, x_all, x_allall =
   in
   x_prep, x_mov, mu, dat, all
 
-
 let inputs = Mat.load_txt (in_dir Printf.(sprintf "reach_1/results_us_%i" t_prep))
 let top_pc_mov, _, _ = Linalg.D.svd Mat.(transpose (x_mov - mean ~axis:0 x_mov))
 let top_pc_prep, _, _ = Linalg.D.svd Mat.(transpose (x_prep - mean ~axis:0 x_prep))
@@ -91,7 +88,6 @@ let matmul x y =
     shp.(2) <- -1;
     Arr.reshape z shp)
   else Mat.(x *@ y)
-
 
 let normalized x = Mat.get_slice [ []; [ 0; 10 ] ] Mat.(x / l2norm ~axis:0 x)
 

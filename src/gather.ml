@@ -11,7 +11,7 @@ let _ =
   Array.init 1520 ~f:(fun i ->
       try
         let x = Mat.load_txt (in_dir (Printf.sprintf "rates_%i" i)) in
-        let y = Mat.load_txt (in_dir (Printf.sprintf "us_%i" i)) in 
+        let y = Mat.load_txt (in_dir (Printf.sprintf "us_%i" i)) in
         assert (Int.(Mat.row_num x = 551));
         let n_steps = Mat.row_num y in
         Some (Arr.reshape y [| 1; n_steps; -1 |])

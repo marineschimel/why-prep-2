@@ -8,14 +8,11 @@ let seed = 1
 let dir_skew =
   "/home/mmcs3/rds/rds-t2-cs133-hh9aMiOkJqI/mmcs3/random_monkeys_skew_lambda_1E-6/rad_0.9/seed_1"
 
-
 let dir_rdn =
   "/home/mmcs3/rds/rds-t2-cs133-hh9aMiOkJqI/mmcs3/random_monkeys_random_lambda_1E-6/rad_0.9/seed_1"
 
-
 let dir_soc =
   "/home/mmcs3/rds/rds-t2-cs133-hh9aMiOkJqI/mmcs3/random_monkeys_lambda_1E-7/seed_6"
-
 
 let lambda = 1E-6
 let t_preps = [| 0.; 50.; 100. |]
@@ -35,7 +32,6 @@ let loss_over_t i d =
       [| t; loss; u_cost_tot; tgt_cost; torques_cost; u_cost_prep; u_cost_mov |])
   |> Mat.of_arrays
   |> fun z -> Arr.reshape z [| 1; Array.length t_preps; -1 |]
-
 
 let rdn_summary =
   Array.fold
@@ -57,7 +53,6 @@ let rdn_summary =
     , Arr.std ~axis:0 v |> fun z -> Arr.reshape z [| Array.length t_preps; -1 |] )
   in
   Mat.(m @|| va)
-
 
 let _ =
   Mat.save_txt

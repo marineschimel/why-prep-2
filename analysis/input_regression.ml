@@ -7,10 +7,8 @@ let in_dir = Printf.sprintf "%s/%s" dir
 let us i t_prep =
   Mat.load_txt (in_dir (Printf.sprintf "us_%i_%i" i Float.(to_int (1000. *. t_prep))))
 
-
 let xs i t_prep =
   Mat.load_txt (in_dir (Printf.sprintf "xs_%i_%i" i Float.(to_int (1000. *. t_prep))))
-
 
 (*general function to perform the regression from inputs to activity, we might want do this either using the same regression matrix across movements, or using a single one every time
 We have the option to do it either using least squares, or using optimization (might be useful if the matrices are too big)
@@ -42,7 +40,6 @@ let regress ?(analytical = true) us xs =
       AD.unpack_arr prms.m
   in
   a, Mat.(us - (xs *@ a))
-
 
 let n = 7
 let t_prep = 0.3

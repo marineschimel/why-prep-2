@@ -35,7 +35,6 @@ let run_net n_steps x0 =
   in
   run_dyn 0 x0
 
-
 let init_points = Mat.gaussian 200 10 (*result from running the dynamics many times *)
 
 let h0s = Mat.map_cols (fun x -> run_net 1 (AD.pack_arr x)) init_points
@@ -76,7 +75,6 @@ let learn h0 =
   let f_cost = cost prms in
   if AD.unpack_flt f_cost < tolerance then Some (AD.unpack_arr prms.h) else None
 
-
 let final_fixed_points =
   let x, _ =
     Array.fold_left
@@ -84,12 +82,11 @@ let final_fixed_points =
         let _ = Printf.printf "num %i %!" k in
         match learn x with
         | Some a -> acc @ [ a ], k + 1
-        | None   -> acc, k + 1)
+        | None -> acc, k + 1)
       ([], 0)
       h0s
   in
   Printf.printf "%i %!" (List.length x);
   Mat.concatenate ~axis:1 (Array.of_list x)
-
 
 let _ = Mat.save_txt ~out:"ffpoints" final_fixed_points

@@ -4,20 +4,15 @@ open Defaults
 module A = Analysis
 
 let _ = Printexc.record_backtrace true
-
 let tdir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
-
 let tprep_dir s = Printf.sprintf "%s/%s" tdir s
-
 let windows = [| 0.; 0.001; 0.05; 0.15; 0.3 |]
-
 let t_preps = [| 0.05; 0.1; 0.3; 0.5; 0.6; 0.8 |]
 
 let get_ac ~win ~tprep ~seed =
   let traj =
     Mat.load_txt
-      (tprep_dir
-         (Printf.sprintf "seed_%i/traj_%i" seed (int_of_float (tprep *. 1000.))))
+      (tprep_dir (Printf.sprintf "seed_%i/traj_%i" seed (int_of_float (tprep *. 1000.))))
   in
   let nprep = int_of_float (1000. *. tprep) in
   let nwin = int_of_float (1000. *. win) in
@@ -26,9 +21,7 @@ let get_ac ~win ~tprep ~seed =
   Mat.reshape y [| 1; Mat.row_num y * Mat.col_num y |]
 
 let dt = 1E-3
-
 let init_theta = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |]
-
 let target_theta = Mat.of_arrays [| [| -0.287147; 2.39155; 0.; 0. |] |]
 
 let _ =
@@ -37,30 +30,25 @@ let _ =
       (fun t_prep ->
         let traj =
           Mat.load_txt
-            (tprep_dir
-               (Printf.sprintf "seed_1/traj_%i"
-                  (int_of_float (t_prep *. 1000.))))
+            (tprep_dir (Printf.sprintf "seed_1/traj_%i" (int_of_float (t_prep *. 1000.))))
         in
         let inputs =
           Mat.load_txt
             (tprep_dir
-               (Printf.sprintf "seed_1/results_us_%i"
-                  (int_of_float (t_prep *. 1000.))))
+               (Printf.sprintf "seed_1/results_us_%i" (int_of_float (t_prep *. 1000.))))
         in
         let r = Mat.get (Mat.load_txt (tprep_dir "seed_1/loss_time")) 0 1 in
         let input_energy = Mat.(l2norm_sqr' inputs) *. r in
         let torques =
           Mat.load_txt
             (tprep_dir
-               (Printf.sprintf "seed_1/torques_%i"
-                  (int_of_float (t_prep *. 1000.))))
+               (Printf.sprintf "seed_1/torques_%i" (int_of_float (t_prep *. 1000.))))
         in
         let accuracy =
           let t1 =
             let dp =
               Mat.(
-                get_slice [ []; [ 0; 1 ] ] traj
-                - get_slice [ []; [ 0; 1 ] ] target_theta)
+                get_slice [ []; [ 0; 1 ] ] traj - get_slice [ []; [ 0; 1 ] ] target_theta)
               |> Mat.l2norm_sqr ~axis:1
             in
             Mat.mapi
@@ -73,8 +61,7 @@ let _ =
           let t2 =
             let dv =
               Mat.(
-                get_slice [ []; [ 2; 3 ] ] traj
-                - get_slice [ []; [ 2; 3 ] ] target_theta)
+                get_slice [ []; [ 2; 3 ] ] traj - get_slice [ []; [ 2; 3 ] ] target_theta)
               |> Mat.l2norm_sqr ~axis:1
             in
             Mat.mapi
@@ -90,8 +77,7 @@ let _ =
           let t1 =
             let dp =
               Mat.(
-                get_slice [ []; [ 0; 1 ] ] traj
-                - get_slice [ []; [ 0; 1 ] ] init_theta)
+                get_slice [ []; [ 0; 1 ] ] traj - get_slice [ []; [ 0; 1 ] ] init_theta)
               |> Mat.l2norm_sqr ~axis:1
             in
             Mat.mapi
@@ -102,9 +88,7 @@ let _ =
             |> Mat.sum'
           in
           let t2 =
-            let dv =
-              Mat.(get_slice [ []; [ 2; 3 ] ] traj) |> Mat.l2norm_sqr ~axis:1
-            in
+            let dv = Mat.(get_slice [ []; [ 2; 3 ] ] traj) |> Mat.l2norm_sqr ~axis:1 in
             Mat.mapi
               (fun i x ->
                 let t = float_of_int i *. dt in
@@ -114,10 +98,7 @@ let _ =
           in
           let t3 =
             let dto =
-              Mat.(
-                get_slice
-                  [ [ 0; int_of_float (t_prep *. 1000.) ]; [ 0; 1 ] ]
-                  torques)
+              Mat.(get_slice [ [ 0; int_of_float (t_prep *. 1000.) ]; [ 0; 1 ] ] torques)
               |> Mat.l2norm_sqr ~axis:1
             in
             Mat.mapi
@@ -129,18 +110,12 @@ let _ =
           in
           t1 +. t2 +. t3
         in
-        [|
-          t_prep;
-          0.5 *. accuracy *. dt;
-          input_energy /. 2. *. dt;
-          0.5 *. no_mov *. dt;
-        |])
+        [| t_prep; 0.5 *. accuracy *. dt; input_energy /. 2. *. dt; 0.5 *. no_mov *. dt |])
       t_preps
   in
   Mat.save_txt ~out:(tprep_dir "summary") Mat.(of_arrays res)
 
 let w = Mat.load_txt "reach_1/w"
-
 let c = Mat.load_txt "reach_1/c"
 
 let top_modes_obs =
@@ -195,17 +170,20 @@ let pair_corr i1 i2 =
       Mat.save_txt
         ~out:
           (tprep_dir
-             (Printf.sprintf "correlation_mov_%i_%i%i"
+             (Printf.sprintf
+                "correlation_mov_%i_%i%i"
                 (int_of_float (window *. 1000.))
-                i1 i2))
+                i1
+                i2))
         Mat.(c1 *@ transpose c2))
     windows
 
 let av_corrs i_min i_max wdw nt =
   let rec tot_corrs tot i j acc =
-    if i = i_max then Mat.(tot /$ acc)
-    else if j = i_max then
-      tot_corrs Mat.(tot + fun_pc i j wdw) (i + 1) (i + 2) (acc +. 1.)
+    if i = i_max
+    then Mat.(tot /$ acc)
+    else if j = i_max
+    then tot_corrs Mat.(tot + fun_pc i j wdw) (i + 1) (i + 2) (acc +. 1.)
     else tot_corrs Mat.(tot + fun_pc i j wdw) i (j + 1) (acc +. 1.)
   in
   tot_corrs (Mat.zeros nt nt) i_min (i_min + 1) 0.

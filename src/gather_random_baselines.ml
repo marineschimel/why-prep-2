@@ -20,7 +20,6 @@ let softmax x =
   let m = Mat.(max ~axis:0 x - min ~axis:0 x +$ (0.1 *. max' x)) in
   Mat.(x / m)
 
-
 let preprocessed_data seed =
   let load i =
     let m = Mat.load_txt (in_dir seed Printf.(sprintf "rates_%i_%i" i t_prep)) in
@@ -43,7 +42,6 @@ let preprocessed_data seed =
   in
   mean_data, Mat.of_arrays (Arr.to_arrays dat)
 
-
 let x_prep seed =
   let m = Arr.reshape (snd (preprocessed_data seed)) [| n_reaches; duration; -1 |] in
   let f i =
@@ -52,7 +50,6 @@ let x_prep seed =
       [| size_prep; -1 |]
   in
   Array.init n_reaches f |> Arr.concatenate ~axis:0
-
 
 let x_mov seed =
   let m = Arr.reshape (snd (preprocessed_data seed)) [| n_reaches; duration; -1 |] in
@@ -63,18 +60,15 @@ let x_mov seed =
   in
   Array.init n_reaches f |> Arr.concatenate ~axis:0
 
-
 let n = 200
 
 let cov_p seed =
   let r = Mat.(x_prep seed - mean ~axis:0 (x_prep seed)) in
   Mat.(transpose r *@ r)
 
-
 let cov_m seed =
   let r = Mat.(x_mov seed - mean ~axis:0 (x_mov seed)) in
   Mat.(transpose r *@ r)
-
 
 module Prms = struct
   type 'a t = { w : 'a } [@@deriving prms]
@@ -101,7 +95,6 @@ let cost seed prms =
   in
   AD.Maths.(neg obj), new_wp, new_wm
 
-
 let learn seed =
   let prms0 = { w = AD.Mat.gaussian n (2 * n_dim) } in
   let stop =
@@ -124,11 +117,9 @@ let learn seed =
   let _, wp, wm = cost seed prms in
   prms, wp, wm
 
-
 let ws seed =
   let _, new_wp, new_wm = learn seed in
   new_wp |> AD.unpack_arr, new_wm |> AD.unpack_arr
-
 
 let captured_variance seed =
   let wp, wm = ws seed in
@@ -165,12 +156,10 @@ let captured_variance seed =
   , top_mp
   , top_mv )
 
-
 let proj x modes =
   (*x is T*N and modes is N*n_dim*)
   let proj = Mat.(x *@ modes) in
   proj
-
 
 let reconstructed proj modes = Mat.(proj *@ transpose modes)
 
@@ -211,7 +200,6 @@ let occupancy seed =
       Mat.of_array x (-1) 1 )
   in
   Mat.(vprep /$ max' vprep), Mat.(vmov /$ max' vmov)
-
 
 let _ =
   let a = Array.init 4 (fun seed -> occupancy (succ seed)) in

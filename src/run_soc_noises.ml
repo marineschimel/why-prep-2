@@ -46,7 +46,6 @@ let tasks =
         ; tau = 150E-3
         })
 
-
 let save_results suffix xs us =
   let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
   let thetas, xs, us =
@@ -57,7 +56,6 @@ let save_results suffix xs us =
   Owl.Mat.save_txt ~out:(file "thetas") thetas;
   Owl.Mat.save_txt ~out:(file "xs") xs;
   Owl.Mat.save_txt ~out:(file "us") us
-
 
 let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
@@ -101,7 +99,6 @@ let prms =
           }
       in
       Model.Generative_P.{ prior; dynamics; likelihood })
-
 
 module I = Model.ILQR (U) (D) (L)
 

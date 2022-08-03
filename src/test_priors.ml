@@ -23,11 +23,9 @@ let targets =
           let t1, t2 = Misc.pos_to_angles x (y +. 0.199112) in
           Mat.of_array [| t1; t2; 0.; 0. |] 1 (-1)))
 
-
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(in_dir "targets") (Mat.concatenate ~axis:0 targets))
-
 
 let beta = AD.F 1E-2
 (* let phi_x x = x
@@ -52,7 +50,6 @@ let _ =
     ~out:(in_dir "prms")
     (Mat.of_array [| tau; lambda_prep; lambda_mov; dt; AD.unpack_flt beta |] 1 (-1))
 
-
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 let t_preps = [| 0.; 0.05; 0.1; 0.15; 0.3; 0.6; 0.8 |]
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec" data_dir)))
@@ -68,16 +65,13 @@ let _ =
         ~out:(Printf.sprintf "%s/nullspace" dir)
         (AD.unpack_arr AD.Maths.(c *@ u0)))
 
-
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/c" dir) (AD.unpack_arr c))
 
-
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/x0" dir) (AD.unpack_arr x0))
-
 
 let b = Mat.eye m
 
@@ -91,10 +85,8 @@ let baseline_input =
   C.broadcast' (fun () ->
       AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose)
 
-
 let x0 =
   AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0 |> AD.Maths.transpose
-
 
 let tasks =
   Array.init
@@ -114,7 +106,6 @@ let tasks =
         ; theta0
         ; tau = 150E-3
         })
-
 
 let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
@@ -183,7 +174,6 @@ let prms =
       let generative = Model.Generative_P.{ prior; dynamics; likelihood } in
       Model.Full_P.{ generative; readout })
 
-
 let save_results suffix xs us n_target n_prep task =
   let file s = Printf.sprintf "%s/%s_%s" dir s suffix in
   let xs = AD.unpack_arr xs in
@@ -244,7 +234,6 @@ let save_results suffix xs us n_target n_prep task =
     ~out:(file "torques")
     Mat.((rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
 
-
 module I = Model.ILQR (U) (D0) (L0)
 
 let _ =
@@ -264,7 +253,6 @@ let _ =
           ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep))
           (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
         save_task (Printf.sprintf "%i_%i" n_target t_prep) t))
-
 
 (* with
   | e -> Stdio.printf "%s" (Exn.to_string e) *)

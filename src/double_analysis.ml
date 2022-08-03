@@ -4,10 +4,10 @@ open Lib
 
 let _ = Printexc.record_backtrace true
 let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
-let t_prep_2 = Cmdargs.(get_int "-prep_2" |> default (t_prep + 900))
+let t_prep_2 = Cmdargs.(get_int "-prep_2" |> default (t_prep + 800))
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let in_dir seed s = Printf.sprintf "%s/seed_%i/%s" dir seed s
-let in_double_dir seed s = Printf.sprintf "%s/seed_%i/sequential/%s" dir seed s
+let in_double_dir seed s = Printf.sprintf "%s/seed_%i/double_ramping_pause_0.5_0.0_0.0000004_300400/%s" dir seed s
 let compound = Cmdargs.check "-compound"
 let in_compound_dir seed = Printf.sprintf "%s/seed_%i/double/%s" dir seed
 let saving_dir = if compound then in_compound_dir else in_double_dir
@@ -15,11 +15,10 @@ let n_dim = 8
 let n_reaches = 8
 let n_var = 8
 let dt = 2E-3
-let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 0 t_prep))
+let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 1 t_prep))
 
 let double_reach_0 =
-  Mat.load_txt (in_double_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 2 t_prep))
-
+  Mat.load_txt (in_double_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 1 t_prep))
 
 let size_prep = 200
 let size_prep_2 = 100
@@ -32,7 +31,6 @@ let n_prep_2 = float_of_int t_prep_2 /. 1000. /. dt |> int_of_float
 let softmax x =
   let m = Mat.(max ~axis:0 x - min ~axis:0 x +$ (0.1 *. max' x)) in
   Mat.(x / m)
-
 
 let ls_double_reaches =
   [| 0, 1
@@ -60,7 +58,6 @@ let ls_double_reaches =
    ; 6, 0
   |]
 
-
 let n_double_reaches = Array.length ls_double_reaches
 
 let preprocessed_data seed =
@@ -85,7 +82,6 @@ let preprocessed_data seed =
   in
   mean_data, Mat.of_arrays (Arr.to_arrays dat)
 
-
 let get_double_data seed =
   let load i j =
     let m =
@@ -109,7 +105,6 @@ let get_double_data seed =
   in
   Mat.of_arrays (Arr.to_arrays dat)
 
-
 let x_prep_from_single seed =
   let m = Arr.reshape (snd (preprocessed_data seed)) [| n_reaches; duration; -1 |] in
   let f i =
@@ -119,7 +114,6 @@ let x_prep_from_single seed =
   in
   Array.init n_reaches f |> Arr.concatenate ~axis:0
 
-
 let x_mov_from_single seed =
   let m = Arr.reshape (snd (preprocessed_data seed)) [| n_reaches; duration; -1 |] in
   let f i =
@@ -128,7 +122,6 @@ let x_mov_from_single seed =
       [| size_mov; -1 |]
   in
   Array.init n_reaches f |> Arr.concatenate ~axis:0
-
 
 let x_prep_from_double seed =
   let m =
@@ -151,7 +144,6 @@ let x_prep_from_double seed =
   in
   Array.init n_reaches f |> Arr.concatenate ~axis:0
 
-
 let x_mov_from_double seed =
   let m =
     Arr.reshape
@@ -172,7 +164,6 @@ let x_mov_from_double seed =
     Arr.concatenate ~axis:0 [| p1; p2 |]
   in
   Array.init (Array.length ls_double_reaches) f |> Arr.concatenate ~axis:0
-
 
 let data_to_proj seed =
   let load i j =
@@ -197,7 +188,6 @@ let data_to_proj seed =
   in
   Mat.of_arrays (Arr.to_arrays dat)
 
-
 let n = Mat.col_num (x_mov_from_single 1)
 let x_prep seed = Arr.(x_prep_from_single seed @= x_prep_from_double seed)
 let x_mov seed = Arr.(x_mov_from_single seed @= x_mov_from_double seed)
@@ -206,11 +196,9 @@ let cov_p seed =
   let r = Mat.(x_prep seed - mean ~axis:0 (x_prep seed)) in
   Mat.(transpose r *@ r)
 
-
 let cov_m seed =
   let r = Mat.(x_mov seed - mean ~axis:0 (x_mov seed)) in
   Mat.(transpose r *@ r)
-
 
 module Prms = struct
   type 'a t = { w : 'a } [@@deriving prms]
@@ -237,7 +225,6 @@ let cost seed prms =
   in
   AD.Maths.(neg obj), new_wp, new_wm
 
-
 let learn seed =
   let prms0 = { w = AD.Mat.gaussian n (2 * n_dim) } in
   let stop =
@@ -260,11 +247,9 @@ let learn seed =
   let _, wp, wm = cost seed prms in
   prms, wp, wm
 
-
 let ws seed =
   let _, new_wp, new_wm = learn seed in
   new_wp |> AD.unpack_arr, new_wm |> AD.unpack_arr
-
 
 let captured_variance seed =
   let wp, wm = ws seed in
@@ -301,18 +286,16 @@ let captured_variance seed =
   , top_mp
   , top_mv )
 
-
 let proj x modes =
   (*x is T*N and modes is N*n_dim*)
   let proj = Mat.(x *@ modes) in
   proj
 
-
 let reconstructed proj modes = Mat.(proj *@ transpose modes)
 
 let occupancy seed =
   let double_reach_0 =
-    Mat.load_txt (saving_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 2 t_prep))
+    Mat.load_txt (saving_dir 1 Printf.(sprintf "rates_%i_%i_%i" 0 1 t_prep))
   in
   let double_duration = Mat.row_num double_reach_0 in
   let load i =
@@ -351,7 +334,6 @@ let occupancy seed =
       Mat.of_array x (-1) 1 )
   in
   Mat.(vprep /$ max' vprep), Mat.(vmov /$ max' vmov)
-
 
 let _ =
   let a = Array.init 5 (fun seed -> occupancy (succ seed)) in

@@ -7,10 +7,11 @@ let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let n_dim = 6
-let reaches = [|1;2; 4; 5|]
+let reaches = [| 0; 1; 2; 4; 5; 6 |]
+
 (* let reaches = [|1;2;3;4;5;6|] *)
 (* let reaches = [|0;1;2;4;5;7|] *)
-let n_reaches = (Array.length reaches)
+let n_reaches = Array.length reaches
 let n_var = 6
 let dt = 2E-3
 let reach_0 = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" 1 t_prep))
@@ -23,14 +24,13 @@ let softmax x =
   let m = Mat.(max ~axis:0 x - min ~axis:0 x +$ (0.1 *. max' x)) in
   Mat.(x / m)
 
-
 let preprocessed_data =
   let load i =
     let m = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" i t_prep)) in
     let ma = Mat.get_fancy [ R [ 0; duration - 1 ]; R [ 0; -1 ] ] m in
     Arr.reshape ma [| duration; -1; 1 |]
   in
-  let data = Array.map (fun i -> load i) reaches  in
+  let data = Array.map (fun i -> load i) reaches in
   let concat_data = Arr.concatenate ~axis:0 data in
   let norm_factor =
     Mat.(max ~axis:0 concat_data - min ~axis:0 concat_data +$ (0.1 *. max' concat_data))
@@ -46,17 +46,24 @@ let preprocessed_data =
   in
   mean_data, Mat.of_arrays (Arr.to_arrays dat)
 
-
 let x_prep =
   let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
   let f i _ =
-    let _ = Stdio.printf "%i %i %i %i %i %i %!" n_prep size_prep (Array.length reaches) (Arr.shape m).(0) (Arr.shape m).(1) (Arr.shape m).(2) in
+    let _ =
+      Stdio.printf
+        "%i %i %i %i %i %i %!"
+        n_prep
+        size_prep
+        (Array.length reaches)
+        (Arr.shape m).(0)
+        (Arr.shape m).(1)
+        (Arr.shape m).(2)
+    in
     Arr.reshape
       (Arr.get_slice [ [ i ]; [ n_prep - size_prep; n_prep - 1 ]; [] ] m)
       [| size_prep; -1 |]
   in
   Array.mapi f reaches |> Arr.concatenate ~axis:0
-
 
 let x_mov =
   let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
@@ -67,18 +74,15 @@ let x_mov =
   in
   Array.mapi f reaches |> Arr.concatenate ~axis:0
 
-
 let n = Mat.col_num x_mov
 
 let cov_p =
   let r = Mat.(x_prep - mean ~axis:0 x_prep) in
   Mat.(transpose r *@ r)
 
-
 let cov_m =
   let r = Mat.(x_mov - mean ~axis:0 x_mov) in
   Mat.(transpose r *@ r)
-
 
 let __cp, __cm = AD.pack_arr cov_p, AD.pack_arr cov_m
 
@@ -87,6 +91,8 @@ let capt_var dim =
   let cm, varm, _ = Linalg.D.svd cov_m in
   let cm = Mat.get_slice [ []; [ 0; dim ] ] cm in
   let cp = Mat.get_slice [ []; [ 0; dim ] ] cp in
+  let varp = Mat.get_slice [ []; [ 0; n_dim ] ] varp in 
+  let varm = Mat.get_slice [ []; [ 0; n_dim ] ] varm in 
   let _ = Printf.printf "%i %i %!" (Mat.row_num cp) (Mat.col_num cp) in
   let var_p_mov = Mat.(trace Mat.(transpose cm *@ cov_p *@ cm)) /. Mat.sum' varp in
   let var_m_prep = Mat.(trace Mat.(transpose cp *@ cov_m *@ cp)) /. Mat.sum' varm in
@@ -94,14 +100,12 @@ let capt_var dim =
   let var_m_mov = Mat.(trace Mat.(transpose cm *@ cov_m *@ cm)) /. Mat.sum' varm in
   [| var_p_mov; var_m_prep; var_p_prep; var_m_mov |]
 
-
 (*this saves : var of prep in move subspace, var move in prep subspace, var prep in prep subspace, var move in move subspace
   for various dimensions*)
 let _ =
-  Array.init n_dim (fun i -> capt_var i) 
+  Array.init n_dim (fun i -> capt_var i)
   |> Mat.of_arrays
   |> Mat.save_txt ~out:(in_dir "analysis/capt_var")
-
 
 (*below, code to check how orthogonal the activity at the end of prep is to the rest of the movement*)
 
@@ -112,23 +116,19 @@ let corr_p =
   let rr = Mat.(r / l2norm ~axis:0 r) in
   Mat.(transpose rr *@ rr)
 
-
 let corr_m =
   let r = Mat.(x_mov - mean ~axis:0 x_mov) in
   let rr = Mat.(r / l2norm ~axis:0 r) in
   Mat.(transpose rr *@ rr)
 
-
 let _ =
   ( Mat.save_txt ~out:(in_dir "analysis/cp") corr_p
   , Mat.save_txt ~out:(in_dir "analysis/cm") corr_m )
-
 
 let pairwise_corr =
   let cp = Mat.reshape corr_p [| n * n; 1 |]
   and cm = Mat.reshape corr_m [| n * n; 1 |] in
   Mat.(cp @|| cm) |> Mat.save_txt ~out:(in_dir "analysis/pairwise")
-
 
 module Prms = struct
   type 'a t = { w : 'a } [@@deriving prms]
@@ -152,7 +152,6 @@ let cost prms =
   in
   AD.Maths.(neg obj), new_wp, new_wm
 
-
 let learn =
   let prms0 = { w = AD.Mat.gaussian n (2 * n_dim) } in
   let stop =
@@ -175,21 +174,18 @@ let learn =
   let _, wp, wm = cost prms in
   prms, wp, wm
 
-
 let wp, wm =
   let _, new_wp, new_wm = learn in
   new_wp |> AD.unpack_arr, new_wm |> AD.unpack_arr
 
 let _ =
-  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/wp" )) wp;
-  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/wm" )) wm
-
+  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/wp")) wp;
+  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/wm")) wm
 
 let proj x modes =
   (*x is T*N and modes is N*n_dim*)
   let proj = Mat.(x *@ modes) in
   proj
-
 
 (*proj is T*n_dim*)
 let reconstructed proj modes = Mat.(proj *@ transpose modes)
@@ -203,25 +199,22 @@ let proj2d =
       a
     in
     let proj_prep = proj x wp in
-    let proj_mov = proj x wm in 
+    let proj_mov = proj x wm in
     Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/proj_prep_%i" i)) proj_prep;
     Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/proj_mov_%i" i)) proj_mov
 
-
 let _ = Array.mapi (fun i _ -> proj2d i) reaches
-
 
 let captured_variance, top_mp, top_mv =
   let _mp, sp, _ = Linalg.D.svd (Mat.transpose x_prep) in
   let _mv, sm, _ = Linalg.D.svd (Mat.transpose x_mov) in
   let _ = Mat.save_txt ~out:"sm" Mat.(transpose (sqr sm)) in
-  let sp, sm = (Mat.sqr sp, Mat.sqr sm) in
+  let sp, sm = Mat.sqr sp, Mat.sqr sm in
   let pct_varp, pct_varm =
-    (Mat.(cumsum ~axis:1 sp /$ sum' sp), Mat.(cumsum ~axis:1 sm /$ sum' sm))
+    Mat.(cumsum ~axis:1 sp /$ sum' sp), Mat.(cumsum ~axis:1 sm /$ sum' sm)
   in
   let top_mp, top_mv =
-    ( Mat.get_slice [ []; [ 0; n_var - 1 ] ] wp,
-      Mat.get_slice [ []; [ 0; n_var - 1 ] ] wm )
+    Mat.get_slice [ []; [ 0; n_var - 1 ] ] wp, Mat.get_slice [ []; [ 0; n_var - 1 ] ] wm
   in
   let m = Mat.(transpose top_mp *@ cov_p *@ top_mp) in
   Mat.save_txt ~out:(in_dir "analysis/pct_var_own") Mat.(pct_varp @= pct_varm);
@@ -235,53 +228,48 @@ let captured_variance, top_mp, top_mv =
   let _, ss, _ = Linalg.D.svd xcent in
   let _, tt, _ = Linalg.D.svd ycent in
   let _ =
-    Printf.printf "pct_var %f %f %f %!"
+    Printf.printf
+      "pct_var %f %f %f %!"
       (Mat.trace z /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sp))
       (Mat.trace zz /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sm))
       (Mat.trace m /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sp))
   in
-  let _ = 
-  Mat.save_txt
-  ~out:(in_dir "analysis/pct_var")
-  Mat.(
-    (cumsum ~axis:1 (Mat.sqr tt) /$ sum' sp)
-    @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm)); 
+  let _ =
     Mat.save_txt
-    ~out:(in_dir "analysis/alignment")
-    Mat.(ones 1 1 *$
-      (trace z /. sum' sp)) in 
+      ~out:(in_dir "analysis/pct_var")
+      Mat.(
+        (cumsum ~axis:1 (Mat.sqr tt) /$ sum' sp)
+        @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm));
+    Mat.save_txt ~out:(in_dir "analysis/alignment") Mat.(ones 1 1 *$ (trace z /. sum' sp))
+  in
   ( Mat.(
-    (cumsum ~axis:1 (Mat.sqr tt) /$ sum' sp)
-    @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm)),
-    top_mp,
-    top_mv )
+      (cumsum ~axis:1 (Mat.sqr tt) /$ sum' sp) @= (cumsum ~axis:1 (Mat.sqr ss) /$ sum' sm))
+  , top_mp
+  , top_mv )
 
+let sample_random_sub u s v =
+  let vs = Mat.gaussian n n_dim in
+  let s = Mat.diagm s in
+  let rdn_sub = Mat.(u *@ sqrt s *@ vs /$ l2norm' (u *@ sqrt s *@ vs)) in
+  let u, _, _ = Linalg.D.svd rdn_sub in
+  u
 
-let sample_random_sub u s v = 
-let vs = Mat.gaussian n n_dim in
-let s = Mat.diagm s
-in let rdn_sub = Mat.(u*@sqrt s*@vs /$ (l2norm' (u*@sqrt s*@vs)))
-in rdn_sub
+let random_alignment u s v =
+  let v1 = sample_random_sub u s v in
+  let v2 = sample_random_sub u s v in
+  Mat.(trace (transpose v1 *@ v2 *@ transpose v2 *@ v1 /$ Float.of_int n_dim))
 
-let random_alignment u s v = 
-  let v1 = sample_random_sub u s v in let v2 = sample_random_sub u s v
-in Mat.(trace ((transpose v1)*@v2*@(transpose v2)*@v1))
-
-
-
-
-let random_alignments = 
+let random_alignments =
   let x =
     let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
-    let f i _ =
-      Arr.reshape
-        (Arr.get_slice [ [ i ]; [ ]; [] ] m)
-        [| duration; -1 |]
-    in
-    Array.mapi f reaches |> Arr.concatenate ~axis:0 in   
-  let _ = Stdio.printf "%i %i %!" (Mat.row_num x) (Mat.col_num x) in 
+    let f i _ = Arr.reshape (Arr.get_slice [ [ i ]; []; [] ] m) [| duration; -1 |] in
+    Array.mapi f reaches |> Arr.concatenate ~axis:0
+  in
   let cov =
     let r = Mat.(x - mean ~axis:0 x) in
     Mat.(transpose r *@ r)
-  in let u, s, v = Linalg.D.svd cov in 
-  Array.init 10000 (fun _ -> [|random_alignment u s v|]) |> Mat.of_arrays |> fun z -> Mat.save_txt ~out:(in_dir "analysis/baseline_alignments") z
+  in
+  let u, s, v = Linalg.D.svd cov in
+  Array.init 10000 (fun _ -> [| random_alignment u s v |])
+  |> Mat.of_arrays
+  |> fun z -> Mat.save_txt ~out:(in_dir "analysis/baseline_alignments") z

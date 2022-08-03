@@ -22,7 +22,6 @@ let print_shape ~label x =
   |> String.concat ~sep:" x "
   |> Stdio.printf "[%s] shape = %s\n%!" label
 
-
 let expand0 x = Maths.reshape x (Array.append [| 1 |] (shape x))
 
 let squeeze0 x =
@@ -30,7 +29,6 @@ let squeeze0 x =
   assert (s.(0) = 1);
   assert (Array.length s = 3);
   Maths.reshape x [| s.(1); s.(2) |]
-
 
 let rec requad x = Caml.Lazy.force _requad x
 and d_requad x = Caml.Lazy.force _d_requad x
@@ -42,40 +40,33 @@ and drq x =
   let tmp = Float.(sqrt (4. + square x)) in
   Float.(0.5 * (1. + (x / tmp)))
 
-
 and drqv x =
   let tmp = Maths.(sqrt (F 4. + sqr x)) in
   Maths.(F 0.5 * (F 1. + (x / tmp)))
 
-
 and drq_arr x =
   let tmp = Owl.Mat.(sqrt (4. $+ sqr x)) in
   Owl.Mat.(0.5 $* (1. $+ x / tmp))
-
 
 and ddrq x =
   let tmp = Float.(4. + square x) in
   let tmp = Float.(tmp * sqrt tmp) in
   Float.(2. / tmp)
 
-
 and ddrq_arr x =
   let tmp = Owl.Mat.(4. $+ sqr x) in
   let tmp = Owl.Mat.(tmp * sqrt tmp) in
   Owl.Mat.(2. $/ tmp)
-
 
 and ddrqv x =
   let tmp = Maths.(F 4. + sqr x) in
   let tmp = Maths.(tmp * sqrt tmp) in
   Maths.(F 2. / tmp)
 
-
 and dddrqv x =
   let tmp = Maths.(F 4. + sqr x) in
   let tmp = Maths.(sqr tmp * sqrt tmp) in
   Maths.(F (-6.) * x / tmp)
-
 
 and _requad =
   let open Builder in
@@ -89,7 +80,6 @@ and _requad =
          let dr a _cp ca = Maths.(!ca * drqv a)
        end : Siso))
 
-
 and _d_requad =
   let open Builder in
   lazy
@@ -102,7 +92,6 @@ and _d_requad =
          let dr a _cp ca = Maths.(!ca * ddrqv a)
        end : Siso))
 
-
 and _d2_requad =
   let open Builder in
   lazy
@@ -114,7 +103,6 @@ and _d2_requad =
          let df _cp ap at = Maths.(at * dddrqv ap)
          let dr a _cp ca = Maths.(!ca * dddrqv a)
        end : Siso))
-
 
 (* log-gamma, reverse-mode only ! *)
 let rec loggamma x = Caml.Lazy.force _loggamma x

@@ -47,7 +47,6 @@ struct
           * (l2norm_sqr' (theta_pos - target_pos) + (F 0.1 * l2norm_sqr' theta_vel)))
       else AD.F 0.
 
-
   let neg_jac_t =
     let _neg_jac_t ~readout ~prms ~task =
       let t_prep = task.t_prep in
@@ -90,7 +89,6 @@ struct
         AD.Maths.(concatenate ~axis:1 [| r_xp; r_xv; r_state |])
     in
     Some _neg_jac_t
-
 
   let neg_hess_t =
     let _neg_hess_t ~readout ~prms ~task =
@@ -147,11 +145,9 @@ struct
     let t_prep = AD.F task.t_prep in
     AD.Maths.(sigmoid ((t_prep - t) / F 2E-4))
 
-
   let finish ~task t =
     let t_mov = AD.F (task.t_prep +. task.t_movs.(0)) in
     AD.Maths.(sigmoid ((t - t_mov) / F 20E-3))
-
 
   let neg_logp_t ~readout ~prms ~task =
     let target_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] task.target in
@@ -176,7 +172,6 @@ struct
           * (F 0.5
             * g_coeff
             * (l2norm_sqr' (theta_pos - target_pos) + (F 0.1 * l2norm_sqr' theta_vel)))))
-
 
   let neg_jac_t =
     let _neg_jac_t ~readout ~prms ~task =
@@ -208,7 +203,6 @@ struct
         AD.Maths.(concatenate ~axis:1 [| r_xp; r_xv; r_state |])
     in
     Some _neg_jac_t
-
 
   let neg_hess_t =
     let _neg_hess_t ~readout ~prms ~task =
@@ -259,7 +253,6 @@ struct
       let target_k = AD.Maths.get_slice [ [ k ]; [] ] tgt in
       AD.Maths.(F 0.5 * q_coeff * l2norm_sqr' (z_t - target_k))
 
-
   let neg_jac_t =
     let _neg_jac_t ~readout:_ ~prms ~task =
       let q_coeff = Owl_parameters.extract prms.q_coeff in
@@ -269,7 +262,6 @@ struct
         AD.Maths.(q_coeff * (z_t - target_k))
     in
     Some _neg_jac_t
-
 
   let neg_hess_t =
     let _neg_hess_t ~readout:_ ~prms ~task =
@@ -315,13 +307,8 @@ struct
         let target_k = AD.Maths.get_slice [ [ k - n_prep ]; [] ] tgt in
         AD.Maths.(F 0.5 * g_coeff * l2norm_sqr' (mu_t - target_k)))
 
-
-  let neg_jac_t =
-    None
-
-
-  let neg_hess_t =
-    None
+  let neg_jac_t = None
+  let neg_hess_t = None
 end
 
 module Successive (X : sig
@@ -388,7 +375,6 @@ struct
           * (l2norm_sqr' (theta_pos - tgt2) + (F 0.1 * l2norm_sqr' theta_vel)))
       else AD.F 0.
 
-
   let neg_jac_t =
     let _neg_jac_t ~readout ~prms ~task =
       let n_prep = Float.to_int (task.t_prep /. task.dt) in
@@ -448,7 +434,6 @@ struct
         AD.Maths.(concatenate ~axis:1 [| r_xp; r_xv; r_state |])
     in
     Some _neg_jac_t
-
 
   let neg_hess_t =
     let _neg_hess_t ~readout ~prms ~task =
@@ -558,7 +543,6 @@ struct
             + (F speed_end_penalty * l2norm_sqr' theta_vel)))
       else AD.F 0.
 
-
   let neg_jac_t =
     let _neg_jac_t ~readout ~prms ~task =
       let t_prep = task.t_prep in
@@ -608,7 +592,6 @@ struct
         AD.Maths.(concatenate ~axis:1 [| r_xp; r_xv; r_state |])
     in
     None
-
 
   let neg_hess_t =
     let _neg_hess_t ~readout ~prms ~task =
@@ -732,11 +715,9 @@ struct
           * (l2norm_sqr' (theta_pos - tgt2) + (F 0.1 * l2norm_sqr' theta_vel)))
       else AD.F 0.
 
-
   let neg_jac_t = None
   let neg_hess_t = None
 end
-
 
 module Acquired_Phi (X : sig
   val label : string
@@ -760,7 +741,7 @@ struct
     let qs_coeff = Owl_parameters.extract prms.Acquired_Phi_P.qs_coeff in
     let g_coeff = Owl_parameters.extract prms.Acquired_Phi_P.g_coeff in
     let t_coeff = Owl_parameters.extract prms.Acquired_Phi_P.t_coeff in
-    let rad_thres =  Owl_parameters.extract prms.Acquired_Phi_P.rad_thres in 
+    let rad_thres = Owl_parameters.extract prms.Acquired_Phi_P.rad_thres in
     let dt = task.dt in
     let n_prep = Float.to_int (t_prep /. dt) in
     let n_mov =
@@ -784,29 +765,23 @@ struct
         AD.Maths.(
           (F 0.5 * sum' (t_coeff * sqr mu_t))
           + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0))))
-      else if k > n_mov then 
-        let rad = (AD.unpack_flt rad_thres) in let curr_rad = 
-          (AD.unpack_flt (AD.primal' AD.Maths.(l2norm' (theta_pos - target_pos)))) in 
-       if Float.(curr_rad < rad) then 
-        AD.Maths.(
-          F 0.5
-          * g_coeff * (F speed_end_penalty * l2norm_sqr' theta_vel)) else 
-            AD.Maths.(
-              F 0.5
-              * g_coeff * (AD.Maths.(l2norm_sqr' (theta_pos - target_pos))) + F speed_end_penalty * l2norm_sqr' theta_vel)
+      else if k > n_mov
+      then (
+        let rad = AD.unpack_flt rad_thres in
+        let curr_rad =
+          AD.unpack_flt (AD.primal' AD.Maths.(l2norm' (theta_pos - target_pos)))
+        in
+        if Float.(curr_rad < rad)
+        then AD.Maths.(F 0.5 * g_coeff * (F speed_end_penalty * l2norm_sqr' theta_vel))
+        else
+          AD.Maths.(
+            (F 0.5 * g_coeff * AD.Maths.(l2norm_sqr' (theta_pos - target_pos)))
+            + (F speed_end_penalty * l2norm_sqr' theta_vel)))
       else AD.F 0.
 
-
-  let neg_jac_t =
-    None
-
-
-  let neg_hess_t =
-    None
+  let neg_jac_t = None
+  let neg_hess_t = None
 end
-
-
-
 
 module Ramping (X : sig
   val label : string
@@ -848,21 +823,16 @@ struct
         AD.Maths.(
           (F 0.5 * sum' (t_coeff * sqr mu_t))
           + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0))))
-      else  
-          let t_diff = AD.Maths.(AD.F (Float.(of_int Int.((k - n_prep))*dt))) in  AD.Maths.(g_coeff * X.phi_t ((t_diff / tau_mov)) * l2norm_sqr' (theta_pos - target_pos) )
-        (* AD.Maths.(AD.F Float.of_int Int.(k - n_prep)
+      else (
+        let t_diff = AD.Maths.(AD.F Float.(of_int Int.(k - n_prep) * dt)) in
+        AD.Maths.(
+          g_coeff * X.phi_t (t_diff / tau_mov) * l2norm_sqr' (theta_pos - target_pos)))
+  (* AD.Maths.(AD.F Float.of_int Int.(k - n_prep)
           * (l2norm_sqr' (theta_pos - target_pos) )) *)
 
-
-  let neg_jac_t =
-    None
-
-
-  let neg_hess_t =
-    None
+  let neg_jac_t = None
+  let neg_hess_t = None
 end
-
-
 
 module Successive_Ramping (X : sig
   val label : string
@@ -887,11 +857,11 @@ struct
     let n_2 = n_1 + Float.to_int (pause_0 /. task.dt) in
     let n_3 = n_2 + Float.to_int (task.t_movs.(1) /. task.dt) in
     let qs_coeff = Owl_parameters.extract prms.qs_coeff in
-    let tau_mov_1 =  Owl_parameters.extract prms.tau_mov_1 in
-    let tau_mov_2 =  Owl_parameters.extract prms.tau_mov_2 in
-    let g_coeff =  Owl_parameters.extract prms.g_coeff in
+    let tau_mov_1 = Owl_parameters.extract prms.tau_mov_1 in
+    let tau_mov_2 = Owl_parameters.extract prms.tau_mov_2 in
+    let g_coeff = Owl_parameters.extract prms.g_coeff in
     let t_coeff = Owl_parameters.extract prms.t_coeff in
-    let pause_coeff = Owl_parameters.extract prms.pause_coeff in 
+    let pause_coeff = Owl_parameters.extract prms.pause_coeff in
     let c = readout in
     let c_t = AD.Maths.transpose c in
     let tgt1 =
@@ -903,45 +873,37 @@ struct
     let dt = task.dt in
     let _dt = AD.F dt in
     let theta0 = task.theta0 in
-    fun ~k ~z_t -> 
-   let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] z_t in
+    fun ~k ~z_t ->
+      let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] z_t in
       let theta_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] thetas in
       let theta_vel = AD.Maths.get_slice [ []; [ 2; 3 ] ] thetas in
       let x_t = AD.Maths.get_slice [ []; [ 4; -1 ] ] z_t in
       let x_t = AD.Maths.(X.phi_x x_t) in
       if k < n_prep
-      then 
+      then (
         let mu_t = AD.Maths.(x_t *@ c_t) in
         AD.Maths.(
           (F 0.5 * sum' (t_coeff * sqr mu_t))
-          + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0)))
-      else
-       if k < n_2
-      then 
-        let t_diff_1 = AD.Maths.(AD.F (Float.(dt* of_int Int.((k - n_1))))) in 
-      let force_pause = if k> n_1 then AD.Maths.(pause_coeff * l2norm_sqr' (theta_vel)) else AD.F 0. in   
-        (AD.Maths.(
+          + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0))))
+      else if k < n_2
+      then (
+        let t_diff_1 = AD.Maths.(AD.F Float.(dt * of_int Int.(k - n_1))) in
+        let force_pause =
+          if k > n_1 then AD.Maths.(pause_coeff * l2norm_sqr' theta_vel) else AD.F 0.
+        in
+        AD.Maths.(
           F 0.5
-          * g_coeff * (X.phi_t ((t_diff_1 / tau_mov_1))
-          * (l2norm_sqr' (theta_pos - tgt1) ) + force_pause)))
-else 
-  let t_diff_2 = AD.Maths.(AD.F (Float.(dt*of_int Int.((k - n_2))))) in 
-     AD.Maths.(
-          F 0.5
-          * g_coeff * X.phi_t ((t_diff_2 / tau_mov_2))
-          * (l2norm_sqr' (theta_pos - tgt2) ))
+          * g_coeff
+          * ((X.phi_t (t_diff_1 / tau_mov_1) * l2norm_sqr' (theta_pos - tgt1))
+            + force_pause)))
+      else (
+        let t_diff_2 = AD.Maths.(AD.F Float.(dt * of_int Int.(k - n_2))) in
+        AD.Maths.(
+          F 0.5 * g_coeff * X.phi_t (t_diff_2 / tau_mov_2) * l2norm_sqr' (theta_pos - tgt2)))
 
-
-  let neg_jac_t =
-    None
-
-
-  let neg_hess_t =
-      None
+  let neg_jac_t = None
+  let neg_hess_t = None
 end
-
-
-
 
 module Ramping_Integrator (X : sig
   val label : string
@@ -972,10 +934,10 @@ struct
     let c = readout in
     let c_t = AD.Maths.transpose c in
     fun ~k ~z_t ->
-      let thetas = AD.Maths.get_slice [ []; [ -2;-1 ] ] z_t in
+      let thetas = AD.Maths.get_slice [ []; [ -2; -1 ] ] z_t in
       let theta_pos = AD.Maths.get_slice [ []; [ -2 ] ] thetas in
       let theta_vel = AD.Maths.get_slice [ []; [ -1 ] ] thetas in
-      let x_t = AD.Maths.get_slice [ []; [ 0;-3 ] ] z_t in
+      let x_t = AD.Maths.get_slice [ []; [ 0; -3 ] ] z_t in
       let x_t = X.phi_x x_t in
       if k < n_prep
       then (
@@ -983,16 +945,13 @@ struct
         AD.Maths.(
           (F 0.5 * sum' (t_coeff * sqr mu_t))
           + (F 0.5 * qs_coeff * l2norm_sqr' (thetas - theta0))))
-      else  
-          let t_diff = AD.Maths.(AD.F (Float.(of_int Int.((k - n_prep))*dt))) in  AD.Maths.(g_coeff * X.phi_t ((t_diff / tau_mov)) * (l2norm_sqr' (theta_pos - target_pos)))
-        (* AD.Maths.(AD.F Float.of_int Int.(k - n_prep)
+      else (
+        let t_diff = AD.Maths.(AD.F Float.(of_int Int.(k - n_prep) * dt)) in
+        AD.Maths.(
+          g_coeff * X.phi_t (t_diff / tau_mov) * l2norm_sqr' (theta_pos - target_pos)))
+  (* AD.Maths.(AD.F Float.of_int Int.(k - n_prep)
           * (l2norm_sqr' (theta_pos - target_pos) )) *)
 
-
-  let neg_jac_t =
-    None
-
-
-  let neg_hess_t =
-    None
+  let neg_jac_t = None
+  let neg_hess_t = None
 end
