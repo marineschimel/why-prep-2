@@ -12,7 +12,7 @@ let n_e = Maths.round (0.8 *. float n) |> int_of_float
 let n_i = n - n_e
 let p_con = Cmdargs.(get_float "-p_con" |> default 0.2) (* exc. connection density *)
 
-let radius = Cmdargs.(get_float "-radius" |> default 5.0)
+let radius = Cmdargs.(get_float "-radius" |> default 1.5)
 let rhs = Mat.(neg (eye n))
 let dc_eval = -10.
 
@@ -66,7 +66,7 @@ let spectral_abscissa m = Linalg.D.eig m |> snd |> Dense.Matrix.Z.re |> Mat.max'
 
 let save ?step label =
   let w_eigs = eigenvalues w in
-  Mat.(save_txt w ~out:(in_dir (sprintf "w" label)));
+  Mat.(save_txt w ~out:(in_dir (sprintf "w_%s" label)));
   Mat.save_txt w_eigs ~out:(in_dir (sprintf "w_%s_eig" label));
   if save_all
   then (
@@ -83,7 +83,7 @@ let save_training sas =
 let rec iterate k sas =
   if k mod 10 = 0
   then (
-    save ~step:(k / 10) (Printf.sprintf "rec_11");
+    save ~step:(k / 10) (Printf.sprintf "rec_5");
     if Cmdargs.(check "-save_training") then save_training sas);
   let sa = spectral_abscissa w in
   printf "\riteration %5i | sa = %.5f%!" k sa;

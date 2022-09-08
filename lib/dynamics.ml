@@ -418,7 +418,6 @@ struct
     let a_discrete =
       Linalg.D.(expm Mat.(AD.unpack_arr a *$ Float.(dt /. tau))) |> AD.pack_arr
     in
-    (* let leak_discrete = AD.Maths.(exp (neg (F dt / F tau))) in *)
     fun ~k:_ ~x ~u ->
       let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
       let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] x in
@@ -426,13 +425,9 @@ struct
       let s = Arm.pack_state thetas in
       let next_x = AD.Maths.((phi_x xs *@ a_discrete) + ((u + bias) *@ b)) in
       let tau =
-        let r = AD.Maths.(phi_x xst - (F 0. * phi_x (transpose x_init))) in
+        let r = AD.Maths.(phi_x xst) in
         AD.Maths.(c *@ r) |> AD.Maths.transpose
       in
-      (*Mat.save_txt
-          ~out:
-            (Printf.sprintf "/rds/user/mmcs3/hpc-work/_results/why_prep/checks_2/s_%i" k)
-          (AD.unpack_arr (AD.Maths.of_arrays [| [| s.x1_dot; s.x2_dot; s.x1; s.x2 |] |])) *)
       let dotdot = M.theta_dot_dot s tau in
       let new_thetas =
         AD.Maths.(

@@ -6,6 +6,8 @@
   gather
   eq_h2norm
   sample_2d
+  scan_socs
+  eval_rads
   analysis_potency
   alignment
   run_ramping_lin_cs
@@ -55,10 +57,15 @@
   test_priors
   run_chaotic
   thetas_to_hands
+  run_hyps_ramping
   run_log_barrier
   diff_c
   test_acquire_tgt
-  run_soft_relu)
+  run_soft_relu
+  run_ramping_skew
+  run_ramping_comp
+  double_ramping_scan
+  test_occupancy)
  (libraries accessor adam owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))

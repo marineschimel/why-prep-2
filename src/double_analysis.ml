@@ -7,14 +7,17 @@ let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let t_prep_2 = Cmdargs.(get_int "-prep_2" |> default (t_prep + 800))
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 let in_dir seed s = Printf.sprintf "%s/seed_%i/%s" dir seed s
-let in_double_dir seed s = Printf.sprintf "%s/seed_%i/double_ramping_pause_0.5_0.0_0.0000004_300400/%s" dir seed s
+
+let in_double_dir seed s =
+  Printf.sprintf "%s/double_ramping_pause_0.5_0.0_0.0000004_300400/%s" dir s
+
 let compound = Cmdargs.check "-compound"
 let in_compound_dir seed = Printf.sprintf "%s/seed_%i/double/%s" dir seed
 let saving_dir = if compound then in_compound_dir else in_double_dir
 let n_dim = 8
 let n_reaches = 8
 let n_var = 8
-let dt = 2E-3
+let dt = 5E-3
 let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 1 t_prep))
 
 let double_reach_0 =

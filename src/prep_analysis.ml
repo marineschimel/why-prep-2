@@ -9,7 +9,7 @@ let in_dir s = Printf.sprintf "%s/%s" dir s
 let n_dim = 6
 let reaches = [| 0; 1; 2; 3; 4; 5; 6; 7 |]
 let n_reaches = Array.length reaches
-let n_var = 6
+let n_var = n_dim
 let dt = 2E-3
 let reach_0 = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" 1 t_prep))
 let size_prep = 150
@@ -46,16 +46,6 @@ let preprocessed_data =
 let x_prep =
   let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
   let f i _ =
-    let _ =
-      Stdio.printf
-        "%i %i %i %i %i %i %!"
-        n_prep
-        size_prep
-        (Array.length reaches)
-        (Arr.shape m).(0)
-        (Arr.shape m).(1)
-        (Arr.shape m).(2)
-    in
     Arr.reshape
       (Arr.get_slice [ [ i ]; [ n_prep - size_prep; n_prep - 1 ]; [] ] m)
       [| size_prep; -1 |]
@@ -100,7 +90,7 @@ let capt_var dim =
 let _ =
   Array.init n_dim (fun i -> capt_var i)
   |> Mat.of_arrays
-  |> Mat.save_txt ~out:(in_dir "analysis/capt_var")
+  |> Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/capt_var" n_dim))
 
 (*below, code to check how orthogonal the activity at the end of prep is to the rest of the movement*)
 
@@ -117,13 +107,38 @@ let corr_m =
   Mat.(transpose rr *@ rr)
 
 let _ =
-  ( Mat.save_txt ~out:(in_dir "analysis/cp") corr_p
-  , Mat.save_txt ~out:(in_dir "analysis/cm") corr_m )
+  ( Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/cp" n_dim)) corr_p
+  , Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/cm" n_dim)) corr_m )
 
+
+  let proj x modes =
+    (*x is T*N and modes is N*n_dim*)
+    let proj = Mat.(x *@ modes) in
+    proj
+  
+  (*proj is T*n_dim*)
+  let reconstructed proj modes = Mat.(proj *@ transpose modes)
+  
+  let cp, varp, _ = Linalg.D.svd cov_p 
+  let cm, varm, _ = Linalg.D.svd cov_m 
+  (*T*N*)
+let proj2d =
+  let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
+  fun i ->
+    let x =
+      let a = Arr.reshape (Arr.get_slice [ [ i ]; []; [] ] m) [| duration; -1 |] in
+      a
+    in
+    let proj_prep = proj x cp in
+    let proj_mov = proj x cm in
+    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pre_proj_prep_%i" n_dim i)) proj_prep;
+    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pre_proj_mov_%i" n_dim i)) proj_mov
+
+let _ = Array.mapi (fun i _ -> proj2d i) reaches
 let pairwise_corr =
   let cp = Mat.reshape corr_p [| n * n; 1 |]
   and cm = Mat.reshape corr_m [| n * n; 1 |] in
-  Mat.(cp @|| cm) |> Mat.save_txt ~out:(in_dir "analysis/pairwise")
+  Mat.(cp @|| cm) |> Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pairwise" n_dim))
 
 module Prms = struct
   type 'a t = { w : 'a } [@@deriving prms]
@@ -174,16 +189,8 @@ let wp, wm =
   new_wp |> AD.unpack_arr, new_wm |> AD.unpack_arr
 
 let _ =
-  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/wp")) wp;
-  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/wm")) wm
-
-let proj x modes =
-  (*x is T*N and modes is N*n_dim*)
-  let proj = Mat.(x *@ modes) in
-  proj
-
-(*proj is T*n_dim*)
-let reconstructed proj modes = Mat.(proj *@ transpose modes)
+  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/wp" n_dim)) wp;
+  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/wm" n_dim)) wm
 
 (*T*N*)
 let proj2d =
@@ -195,8 +202,8 @@ let proj2d =
     in
     let proj_prep = proj x wp in
     let proj_mov = proj x wm in
-    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/proj_prep_%i" i)) proj_prep;
-    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis/proj_mov_%i" i)) proj_mov
+    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/proj_prep_%i" n_dim i)) proj_prep;
+    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/proj_mov_%i" n_dim i)) proj_mov
 
 let _ = Array.mapi (fun i _ -> proj2d i) reaches
 
@@ -210,12 +217,12 @@ let captured_variance, top_mp, top_mv =
     Mat.get_slice [ []; [ 0; n_var - 1 ] ] wp, Mat.get_slice [ []; [ 0; n_var - 1 ] ] wm
   in
   let m = Mat.(transpose top_mp *@ cov_p *@ top_mp) in
-  Mat.save_txt ~out:(in_dir "analysis/pct_var_own") Mat.(pct_varp @= pct_varm);
+  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pct_var_own" n_dim)) Mat.(pct_varp @= pct_varm);
   let x = Mat.(x_mov *@ top_mp *@ transpose top_mp) in
   let y = Mat.(x_prep *@ top_mv *@ transpose top_mv) in
   let z = Mat.(transpose top_mv *@ cov_p *@ top_mv) in
   let zz = Mat.(transpose top_mp *@ cov_m *@ top_mp) in
-  let _ = Mat.save_txt ~out:(in_dir "analysis/top_mp") top_mp in
+  let _ = Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/top_mp" n_dim)) top_mp in
   let xcent = Mat.(x - mean ~axis:0 x) in
   let ycent = Mat.(y - mean ~axis:0 y) in
   let _, ss, _ = Linalg.D.svd xcent in
@@ -228,7 +235,7 @@ let captured_variance, top_mp, top_mv =
       (Mat.trace m /. Mat.sum' (Mat.get_slice [ []; [ 0; n_var - 1 ] ] sp))
   in
   ( Mat.save_txt
-      ~out:(in_dir "analysis/pct_var")
+      ~out:(in_dir (Printf.sprintf "analysis_%i/pct_var" n_dim))
       Mat.((Mat.sqr tt /$ sum' sp) @= (Mat.sqr ss /$ sum' sm))
   , top_mp
   , top_mv )
@@ -272,5 +279,5 @@ let occupancy =
     , let x = Arr.var ~axis:2 rms |> Arr.sum ~axis:1 |> Arr.to_array in
       Mat.of_array x (-1) 1 )
   in
-  ( Mat.save_txt ~out:(in_dir "analysis/vprep") Mat.(vprep /$ max' vprep)
-  , Mat.save_txt ~out:(in_dir "analysis/vmov") Mat.(vmov /$ max' vmov) )
+  ( Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/vprep" n_dim)) Mat.(vprep /$ max' vprep)
+  , Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/vmov" n_dim)) Mat.(vmov /$ max' vmov) )

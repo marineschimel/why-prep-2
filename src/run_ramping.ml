@@ -30,6 +30,8 @@ let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
 let tau_mov = Cmdargs.(get_float "-tau_mov" |> default 600.)
 let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.)
 let exponent = Cmdargs.(get_int "-exponent" |> force ~usage:"exponent")
+let n_lr = Cmdargs.(get_int "-n_lr" |> default 1)
+let sa_tgt = Cmdargs.(get_float "-sa_tgt" |> default 1.)
 let seed = Cmdargs.(get_int "-seed" |> default 1)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
@@ -107,25 +109,51 @@ let _ =
        (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
+let t_preps = [| 0.; 0.5 |]
+(* 0.025; 0.05; 0.07; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0.8; 0.9; 1.0 |] *)
 
-let t_preps =
-  [| 0.; 0.025; 0.05; 0.07; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0.8; 0.9; 1.0 |]
+let u, v =
+  let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
+  let q, r, _ = Linalg.D.qr m in
+  ( Mat.get_slice [ []; [ 0; n_lr - 1 ] ] m
+  , Mat.get_slice [ []; [ n_lr; (2 * n_lr) - 1 ] ] m )
+
+let _ =
+  Stdio.printf
+    "%i %i %i %i %!"
+    (Mat.row_num u)
+    (Mat.col_num u)
+    (Mat.row_num v)
+    (Mat.col_num v)
+
+let eigenvalues m =
+  let v = Linalg.D.eigvals m in
+  let re = Dense.Matrix.Z.re v in
+  let im = Dense.Matrix.Z.im v in
+  Mat.(concat_horizontal (transpose re) (transpose im))
+
+let get_sa m =
+  let v = Linalg.D.eigvals m in
+  let v = Dense.Matrix.Z.re v in
+  Mat.max' v
 
 let w =
   C.broadcast' (fun () ->
       if soc
       then Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed))
-    else if sim_soc then 
-      let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed))
-in let transformed_w,s = 
-        Misc.transform w in 
-        let _ = Mat.save_txt ~out:(Printf.sprintf "%s/sim_norm" data_dir) (Mat.l2norm ~axis:1 s)  in
-         transformed_w
+      else if sim_soc
+      then (
+        let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)) in
+        let transformed_w, s = Misc.transform w in
+        let _ =
+          Mat.save_txt ~out:(Printf.sprintf "%s/sim_norm" data_dir) (Mat.l2norm ~axis:1 s)
+        in
+        transformed_w)
       else if lr
       then (
-        let u = Mat.(load_txt (Printf.sprintf "%s/u" data_dir)) in
-        let v = Mat.(load_txt (Printf.sprintf "%s/v" data_dir)) in
-        Mat.(u *@ v))
+        let m = Mat.(u *@ transpose v) in
+        let max_eig = get_sa m in
+        if Float.(sa_tgt < 1.) then Mat.(m /$ Float.(max_eig *. sa_tgt)) else m)
       else (
         let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
         if skew
@@ -142,23 +170,16 @@ in let transformed_w,s =
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 
 let c =
-  C.broadcast' (fun () ->
-      if lr
-      then Mat.(load_txt (Printf.sprintf "%s/c" data_dir)) |> Mat.transpose |> AD.pack_arr
-      else AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
+  C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
 
 let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1))
-
-let eigenvalues m =
-  let v = Linalg.D.eigvals m in
-  let re = Dense.Matrix.Z.re v in
-  let im = Dense.Matrix.Z.im v in
-  Mat.(concat_horizontal (transpose re) (transpose im))
 
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(in_dir "eigs") (eigenvalues w);
-      Mat.save_txt ~out:(in_dir "eigs_wrec") (eigenvalues  Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)));
+      Mat.save_txt
+        ~out:(in_dir "eigs_wrec")
+        (eigenvalues Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)));
       Mat.save_txt ~out:(in_dir "w") w)
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
 
@@ -376,6 +397,12 @@ let save_results suffix xs us quus n_target n_prep task =
     ~out:(file "quus")
     (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
   Owl.Mat.save_txt
+    ~out:(file "summary")
+    (Mat.of_array
+       [| t_prep; prep_idx; loss; input_cost_tot; torque_err; target_err; ratio_u_cost |]
+       1
+       (-1));
+  Owl.Mat.save_txt
     ~out:(file "u_cost")
     (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
   Owl.Mat.save_txt
@@ -415,7 +442,6 @@ let () =
           let n_prep = Float.to_int (t.t_prep /. dt) in
           let t_prep_int = Float.to_int (1000. *. t.t_prep) in
           let xs, us, l, quus, _ =
-          
             I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
           in
           let () =

@@ -13,16 +13,16 @@ let subdir = Cmdargs.(get_string "-subdir" |> force ~usage:"-d [dir to save in]"
 let data_dir = Cmdargs.(get_string "-data" |> force ~usage:"-data [dir in which data is]")
 let t1 = Cmdargs.(get_float "-t1" |> force ~usage:"-t1")
 let t2 = Cmdargs.(get_float "-t2" |> force ~usage:"-t2")
-let tau_mov_1 = Cmdargs.(get_float "-tau_mov_1" |> force ~usage:"-tau_mov_1")
-let tau_mov_2 = Cmdargs.(get_float "-tau_mov_2" |> force ~usage:"-tau_mov_2")
 let exponent = Cmdargs.(get_int "-exponent" |> force ~usage:"exponent")
 let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.0)
+let g_coeff = Cmdargs.(get_float "-g_coeff" |> default 1.0)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
 let pause = Cmdargs.(get_float "-pause" |> default 0.5)
 let pause_coeff = Cmdargs.(get_float "-pause_coeff" |> default 1.)
+let save_all = Cmdargs.(check "-save_all")
 
 let lambda =
   Cmdargs.(get_float "-lambda" |> force ~usage:"-lambda [dir in which data is]")
@@ -31,7 +31,7 @@ let exponent = AD.F (Float.of_int exponent)
 let phi_t t = AD.Maths.(t ** exponent)
 let scale_mov = Cmdargs.(get_float "-scale_mov" |> default 1.)
 let rad = Cmdargs.(get_float "-rad" |> default 0.12)
-let t_tot = 0.6
+let t_tot = 1.2
 
 let targets =
   C.broadcast' (fun () ->
@@ -114,6 +114,7 @@ let w =
   C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)))
 
 let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir)))
+let c = C.broadcast' (fun () -> AD.Maths.(AD.F 1. * c))
 
 (* let c = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:0.003 2 m) *)
 (* C.broadcast' (fun () ->
@@ -200,7 +201,7 @@ end)
 
 module R = Readout
 
-let dt_scaling = Float.(dt /. 1E-3 *. 1000.)
+let dt_scaling = Float.(dt /. 1E-3 *. 10.)
 
 let prms =
   let open Owl_parameters in
@@ -211,7 +212,7 @@ let prms =
           ; c_mask = None
           ; qs_coeff = (pinned : setter) (AD.F Float.(dt_scaling))
           ; t_coeff = (pinned : setter) (AD.F Float.(t_coeff *. dt_scaling))
-          ; g_coeff = (pinned : setter) (AD.F Float.(dt_scaling))
+          ; g_coeff = (pinned : setter) (AD.F Float.(g_coeff *. dt_scaling))
           ; tau_mov_1 = (pinned : setter) (AD.F Float.(t_tot))
           ; tau_mov_2 = (pinned : setter) (AD.F Float.(t_tot))
           ; pause_coeff = (pinned : setter) (AD.F Float.(pause_coeff))
@@ -240,6 +241,7 @@ let save_results suffix xs us n_prep task =
   let file s = Printf.sprintf "%s/%s/%s_%s" dir subdir s suffix in
   let xs = AD.unpack_arr xs in
   let us = AD.unpack_arr us in
+  let _ = Stdio.printf "%i %!" n_prep in
   let torque_err, target_err =
     Analysis_funs.cost_x
       ~f:(fun k x ->
@@ -271,27 +273,37 @@ let save_results suffix xs us n_prep task =
     Analysis_funs.cost_u ~f:(fun k x -> AD.unpack_flt (f k x)) ~n_prep us
   in
   let rates = AD.unpack_arr (link_f (AD.pack_arr xs)) in
-  Owl.Mat.save_txt ~out:(file "u_cost") (Mat.of_array [| input_cost_tot |] 1 (-1));
-  Owl.Mat.save_txt
-    ~out:(file "task_cost")
-    (Mat.of_array [| torque_err; target_err |] 1 (-1));
-  let hands =
-    let h =
-      AD.Mat.map_by_row
-        (fun x -> Arm.unpack_state_diff (M.hand_of (Arm.pack_state x)))
-        (AD.pack_arr thetas)
-    in
-    AD.unpack_arr h
+  let _ =
+    Owl.Mat.save_txt ~out:(file "u_cost") (Mat.of_array [| input_cost_tot |] 1 (-1));
+    Owl.Mat.save_txt
+      ~out:(file "task_cost")
+      (Mat.of_array [| torque_err; target_err |] 1 (-1))
   in
-  Owl.Mat.save_txt ~out:(file "hands") hands;
-  Owl.Mat.save_txt ~out:(file "thetas") thetas;
-  Owl.Mat.save_txt ~out:(file "xs") xs;
-  Owl.Mat.save_txt ~out:(file "us") us;
-  Owl.Mat.save_txt ~out:(file "rates") rates;
-  Owl.Mat.save_txt ~out:(file "eff_us") (AD.unpack_arr (link_f (AD.pack_arr us)));
-  Owl.Mat.save_txt
-    ~out:(file "torques")
-    Mat.((rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
+  if save_all
+  then (
+    let () =
+      try
+        let hands =
+          let h =
+            AD.Mat.map_by_row
+              (fun x -> Arm.unpack_state_diff (M.hand_of (Arm.pack_state x)))
+              (AD.pack_arr thetas)
+          in
+          AD.unpack_arr h
+        in
+        Owl.Mat.save_txt ~out:(file "hands") hands
+      with
+      | _ -> Stdio.printf "tree2"
+    in
+    Owl.Mat.save_txt ~out:(file "thetas") thetas;
+    Owl.Mat.save_txt ~out:(file "xs") xs;
+    Owl.Mat.save_txt ~out:(file "us") us;
+    Owl.Mat.save_txt ~out:(file "rates") rates;
+    Owl.Mat.save_txt ~out:(file "eff_us") (AD.unpack_arr (link_f (AD.pack_arr us)));
+    Owl.Mat.save_txt
+      ~out:(file "torques")
+      Mat.(
+        (rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c)))
 
 let attempt_1 =
   let x0 = x0 in
@@ -301,16 +313,20 @@ let attempt_1 =
       then (
         try
           let t_prep = Float.to_int (1000. *. t.t_prep) in
-          let xs, us, l, _, _ =
+          let n_prep = Float.to_int (t.t_prep /. dt) in
+          let xs, us, l, _, solved =
             I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
           in
-          save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
+          if solved
+          then save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us n_prep t;
           Mat.save_txt
             ~out:(in_dir (Printf.sprintf "loss_%i_%i_%i" k j t_prep))
             (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-          (true, (k, j, t)) :: acc
+          (solved, (k, j, t)) :: acc
         with
-        | _ -> (false, (k, j, t)) :: acc)
+        | e ->
+          Stdio.printf "%s %!" (Exn.to_string e);
+          (false, (k, j, t)) :: acc)
       else acc)
   |> C.gather
   |> fun a -> C.broadcast' (fun () -> a |> Array.to_list |> List.concat |> Array.of_list)
@@ -321,13 +337,18 @@ let _ =
       then
         if not b
         then (
+          let _ = Stdio.printf "second attempt %i %i %!" k j in
           let t_prep = Float.to_int (1000. *. t.t_prep) in
-          let xs, us, l, _, _ =
-            I.solve ~u_init:Mat.(gaussian ~sigma:0.0001 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
-          in
-          save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
-          Mat.save_txt
-            ~out:(in_dir (Printf.sprintf "loss_%i_%i_%i" k j t_prep))
-            (Mat.of_array [| AD.unpack_flt l |] 1 (-1))))
+          try
+            let xs, us, l, _, success =
+              I.solve ~u_init:Mat.(gaussian ~sigma:0.001 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
+            in
+            if success
+            then save_results (Printf.sprintf "%i_%i_%i" k j t_prep) xs us t_prep t;
+            Mat.save_txt
+              ~out:(in_dir (Printf.sprintf "loss_%i_%i_%i" k j t_prep))
+              (Mat.of_array [| AD.unpack_flt l |] 1 (-1))
+          with
+          | e -> Stdio.printf "%s %i %i %!" (Exn.to_string e) k j))
 
 let _ = C.barrier ()

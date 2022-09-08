@@ -137,8 +137,8 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         if single_run
         then k >= 0
         else if opt
-        then k > 10 || Float.(pct_change < 1E-3)
-        else (k > 10 && Float.(pct_change < 2E-4)) || k > 50
+        then k >= 10 || Float.(pct_change < 1E-2)
+        else (k > 10 && Float.(pct_change < 2E-4)) || k > 40
     in
     let us =
       match u_init with
@@ -147,20 +147,24 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         List.init M.n_steps ~f:(fun k -> AD.pack_arr (Mat.get_slice [ [ k ] ] us))
     in
     (* try *)
-    let tau =
-      IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
-    in
-    let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
-    let quus = IP.differentiable_quus ~theta:prms x0 us in
-    ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
-    , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
-    , IP.differentiable_loss ~theta:prms tau
-    , quus
-    , true )
-  (* with
+      let tau =
+        IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
+      in
+      let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
+      (* let quus = IP.differentiable_quus ~theta:prms x0 us in *)
+      ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
+      , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
+      , IP.differentiable_loss ~theta:prms tau
+      , List.init 1 ~f:(fun _ -> AD.Mat.zeros 1 1) (*quus*)
+      , true )
+    (* with
     | e ->
       Stdio.printf "%s %!" (Exn.to_string e);
-      AD.Mat.zeros M.n_steps n, AD.Mat.zeros M.n_steps m, AD.F (-444.), List.init 1 ~f:(fun _ -> AD.Mat.zeros 1 1), false *)
+      ( AD.Mat.zeros M.n_steps n
+      , AD.Mat.zeros M.n_steps m
+      , AD.F (-444.)
+      , List.init 1 ~f:(fun _ -> AD.Mat.zeros 1 1)
+      , false ) *)
 
   let run ~ustars ~n ~m ~x0 ~prms task =
     let a, b, _, _, _ = solve ~u_init:ustars ~single_run:true ~n ~m ~x0 ~prms task in
@@ -189,7 +193,6 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
     let adam_loss _ theta gradient =
       Stdlib.Gc.full_major ();
       let theta = C.broadcast theta in
-      let _ = Stdio.printf "%i %i" (Arr.shape theta).(0) (Arr.shape theta).(1) in
       let loss, g =
         Array.foldi
           data
@@ -201,7 +204,8 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
               let open AD in
               let theta = make_reverse (Arr (Owl.Mat.copy theta)) (AD.tag ()) in
               let prms = F.unpack handle theta in
-              let u_init = us_init.(i) in
+              let u_init = None in
+              (* us_init.(i) in *)
               let loss, mu_u = loss ~u_init ~prms datai in
               if recycle_u then us_init.(i) <- Some mu_u;
               reverse_prop (F 1.) loss;

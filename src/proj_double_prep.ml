@@ -5,18 +5,18 @@ open Lib
 let _ = Printexc.record_backtrace true
 let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let t_prep_2 = Cmdargs.(get_int "-prep_2" |> default (t_prep + 800))
-let n_prep_2 = t_prep_2 / 2
+let n_prep_2 = t_prep_2 / 5
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 
 let dir =
-  "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams/monkeys_0.01_0.0000004_9.0/ramping_soc/seed_0_mixed"
+  "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams/monkeys_0.05_0.0000002_9.0/ramping_soc/seed_5_mixed"
 
 let in_dir seed s = Printf.sprintf "%s/%s" dir s
 
 (*Printf.sprintf "%s/seed_%i/%s" dir seed s*)
 let in_double_dir _seed s =
   Printf.sprintf
-    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams/monkeys_0.01_0.0000004_9.0/ramping_soc/seed_0_mixed/double_ramping_pause_0.1_0.0_0.0000004_300400/%s"
+    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams/monkeys_0.05_0.0000002_9.0/ramping_soc/seed_5_mixed/double_ramping3/pause_0.5_1.0_0.0000001_1.0_8.0/%s"
     s
 
 let superscript = Cmdargs.(get_string "-superscript" |> default "")
@@ -25,16 +25,16 @@ let compound = Cmdargs.check "-compound"
 
 let in_compound_dir _seed s =
   Printf.sprintf
-    "/home/mmcs3/rds/rds-t2-cs133-hh9aMiOkJqI/mmcs3/random_monkeys_lambda_1E-6/double_ramping_short/%s"
+    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams/monkeys_0.05_0.0000002_9.0/ramping_soc/seed_5_mixed/double_ramping3/pause_0.5_1.0_0.0000001_1.0_8.0/%s"
     s
 
 (* Printf.sprintf "%s/300_350%s" dir superscript *)
 (* let ws_dir = "analysis" *)
 let ws_dir = "double_projs_long"
 let saving_dir = if compound then in_compound_dir else in_double_dir
-let n_dim = 8
-let n_var = 8
-let dt = 2E-3
+let n_dim = 6
+let n_var = 6
+let dt = 5E-3
 let n_neurons = 200
 let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 1 t_prep))
@@ -44,8 +44,8 @@ let double_reach_0 =
 
 (* |> Mat.get_slice [ [ 0; size_double ] ] *)
 
-let size_prep = 200
-let size_prep_2 = 100
+let size_prep = 40
+let size_prep_2 = 40
 let size_mov = 200
 let duration = Mat.row_num reach_0
 let double_duration = Mat.row_num double_reach_0
@@ -61,6 +61,7 @@ let softmax x =
 let ls_double_reaches =
   [| 0, 1
    ; 0, 2
+   ; 0, 3
    ; 0, 4
    ; 0, 5
    ; 0, 6
@@ -203,12 +204,12 @@ let x_mov_from_double seed =
   let f i =
     let p1 =
       Arr.reshape
-        (Arr.get_slice [ [ i ]; [ n_prep + 25; n_prep + 25 + size_mov - 1 ]; [] ] m)
+        (Arr.get_slice [ [ i ]; [ n_prep + 10; n_prep + 10 + size_mov - 1 ]; [] ] m)
         [| size_mov; -1 |]
     in
     let p2 =
       Arr.reshape
-        (Arr.get_slice [ [ i ]; [ n_prep_2 + 25; n_prep_2 + 25 + size_mov - 1 ]; [] ] m)
+        (Arr.get_slice [ [ i ]; [ n_prep_2 + 10; n_prep_2 + 10 + size_mov - 1 ]; [] ] m)
         [| size_mov; -1 |]
     in
     Arr.concatenate ~axis:0 [| p1; p2 |]
@@ -393,7 +394,7 @@ let x_sub_prep_from_double =
 
 let occupancy seed =
   let double_reach_0 =
-    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 1 t_prep))
+    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 1 0 t_prep))
     |> Mat.get_slice [ [ 0; -1 ] ]
   in
   let dat = data_to_proj seed in
@@ -443,7 +444,7 @@ let _ =
 
 let proj2d =
   let double_reach_0 =
-    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 0 1 t_prep))
+    Mat.load_txt (saving_dir seed Printf.(sprintf "rates_%i_%i_%i" 1 0 t_prep))
     |> Mat.get_slice [ [ 0; -1 ] ]
   in
   let double_duration = Mat.row_num double_reach_0 in
