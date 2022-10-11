@@ -4,6 +4,7 @@ module M = Arm.Make (Arm.Defaults)
 open Lib
 open Base
 open Accessor.O
+
 (* Setting up the parameters/directories
 *)
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
@@ -25,8 +26,10 @@ let sim_soc = Cmdargs.(check "-sim_soc")
 let skew = Cmdargs.(check "-skew")
 let triang = Cmdargs.(check "-triang")
 let lr = Cmdargs.(check "-lr")
-let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.5)
+let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.05)
 let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
+let eta = Cmdargs.(get_float "-eta" |> default 0.001)
+let n_decay = Cmdargs.(get_float "-n_decay" |> default 1.)
 let tau_mov = Cmdargs.(get_float "-tau_mov" |> default 600.)
 let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.)
 let exponent = Cmdargs.(get_int "-exponent" |> force ~usage:"exponent")
@@ -38,6 +41,7 @@ let n_targets = 8
 let m = 200
 let n_tasks = 38
 let n = m + 4
+
 let targets =
   C.broadcast' (fun () ->
       Array.init n_targets ~f:(fun i ->
@@ -72,17 +76,16 @@ let phi_t t = AD.Maths.(t ** exponent)
 let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
 let d2_phi_x x = AD.Maths.(diagm (F 0. * x)) *)
 let _ = if nonlin == "tanh" then Stdio.printf "tanh nonlinearity"
-let phi_x x = if nonlin == "tanh" then AD.Maths.(F 5. * tanh x) else AD.Maths.relu x
+let phi_x x = x
 
-let d_phi_x x =
-  if nonlin == "tanh"
+(* if nonlin == "tanh" then AD.Maths.(F 5. * tanh x) else AD.Maths.relu x *)
+
+let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
+(* if nonlin == "tanh"
   then AD.Maths.(F 5. * (F 1. - (F 2. * sqr (tanh x))))
-  else AD.Maths.(F 0.5 * (F 1. + signum x))
+  else AD.Maths.(F 0.5 * (F 1. + signum x)) *)
 
-let d2_phi_x x =
-  if nonlin == "tanh"
-  then AD.Maths.(F (-10.) * tanh x * d_phi_x x)
-  else AD.Maths.(diagm (F 0. * x))
+let d2_phi_x x = AD.Maths.(diagm (F 0. * x))
 
 (* let phi_x x = AD.Maths.(F 5. * tanh x)
 let d_phi_x x = AD.Maths.(F 5. * (F 1. - F 2. * (sqr (tanh x))))
@@ -111,24 +114,34 @@ let _ =
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
 
+let u, v =
+  let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
+  let q, r, _ = Linalg.D.qr m in
+  ( Mat.get_slice [ []; [ 0; n_lr - 1 ] ] m
+  , Mat.get_slice [ []; [ n_lr; (2 * n_lr) - 1 ] ] m )
 
-let u, v = let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in let q, r, _ = Linalg.D.qr m in Mat.get_slice [[]; [0; n_lr - 1]] m , Mat.get_slice [[]; [n_lr ; 2*n_lr -1]] m
-
-let _ = Stdio.printf "%i %i %i %i %!" (Mat.row_num u) (Mat.col_num u) (Mat.row_num v) (Mat.col_num v)
+let _ =
+  Stdio.printf
+    "%i %i %i %i %!"
+    (Mat.row_num u)
+    (Mat.col_num u)
+    (Mat.row_num v)
+    (Mat.col_num v)
 
 let w =
   C.broadcast' (fun () ->
       if soc
       then Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed))
-    else if sim_soc then 
-      let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed))
-in let transformed_w,s = 
-        Misc.transform w in 
-        let _ = Mat.save_txt ~out:(Printf.sprintf "%s/sim_norm" data_dir) (Mat.l2norm ~axis:1 s)  in
-         transformed_w
-      else if lr
+      else if sim_soc
       then (
-        Mat.(Float.(rad_w /. sqrt (of_int m)) $*(u *@ (transpose v))))
+        let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)) in
+        let transformed_w, s = Misc.transform w in
+        let _ =
+          Mat.save_txt ~out:(Printf.sprintf "%s/sim_norm" data_dir) (Mat.l2norm ~axis:1 s)
+        in
+        transformed_w)
+      else if lr
+      then Mat.(Float.(rad_w /. sqrt (of_int m)) $* u *@ transpose v)
       else (
         let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
         if skew
@@ -147,7 +160,7 @@ let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 let c =
   C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
 
-let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1))
+let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.00001 * AD.Mat.uniform ~a:5. ~b:15. m 1))
 
 let eigenvalues m =
   let v = Linalg.D.eigvals m in
@@ -158,7 +171,9 @@ let eigenvalues m =
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(in_dir "eigs") (eigenvalues w);
-      Mat.save_txt ~out:(in_dir "eigs_wrec") (eigenvalues  Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)));
+      Mat.save_txt
+        ~out:(in_dir "eigs_wrec")
+        (eigenvalues Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)));
       Mat.save_txt ~out:(in_dir "w") w)
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
 
@@ -212,26 +227,22 @@ let x0 =
 
 let _ = Stdio.printf "N targets : %i %!" n_targets
 
-
-
 let tasks =
-  Array.init
-  n_tasks
-    ~f:(fun i ->
+  Array.init n_tasks ~f:(fun i ->
       let n_time = i / n_targets in
       let n_target = Int.rem i n_targets in
-       Model.
-          { t_prep = Stats.uniform_rvs ~a:0.3 ~b:0.3
-          ; x0
-          ; t_movs = [| Stats.uniform_rvs ~a:0.35 ~b:0.35 |]
-          ; dt
-          ; t_hold = Some 0.2
-          ; t_pauses = None
-          ; scale_lambda = None
-          ; target = AD.pack_arr (target n_target)
-          ; theta0
-          ; tau = 150E-3
-          } )
+      Model.
+        { t_prep = Stats.uniform_rvs ~a:0.3 ~b:0.3
+        ; x0
+        ; t_movs = [| Stats.uniform_rvs ~a:0.35 ~b:0.35 |]
+        ; dt
+        ; t_hold = Some 0.2
+        ; t_pauses = None
+        ; scale_lambda = None
+        ; target = AD.pack_arr (target n_target)
+        ; theta0
+        ; tau = 150E-3
+        })
 
 let _ = Stdio.printf "Size of tasks : %i %!" (Array.length tasks)
 let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) prms
@@ -308,8 +319,8 @@ let prms =
 module I = Model.ILQR (U) (D0) (L0)
 
 let _ = C.print (Printf.sprintf "array len : %i %!" (Array.length tasks))
-
 let norm_c0 = AD.Maths.l2norm' c
+
 let project_c c =
   let open Owl_parameters in
   let c = extract c in
@@ -319,18 +330,13 @@ let project_c c =
 
 let loss ~u_init ~prms t =
   let prms =
-    C.broadcast
-      (Accessor.map (Model.Full_P.A.readout @> Readout.Readout_P.A.c) prms ~f:project_c)
+    Accessor.map (Model.Full_P.A.readout @> Readout.Readout_P.A.c) prms ~f:project_c
   in
-  let _, us, l,_,_ =
-    match u_init with
-    | Some u_init ->
-      let _ = C.print "Some u_init  : " in
-      I.solve ~u_init ~opt:true ~n ~m ~x0 ~prms t
-    | None -> I.solve ~opt:true ~n ~m ~x0 ~prms t
-  in
-  let _ = Stdio.printf "tree" in 
-  let c = Owl_parameters.extract prms.readout.c in AD.Maths.(l / AD.F (Float.of_int n_tasks) + F 0.01 * l2norm_sqr' c), AD.unpack_arr us
+  let _, us, l, _, _ = I.solve ~opt:true ~n ~m ~x0 ~prms t in
+  let _ = Stdio.printf "tree" in
+  let c = Owl_parameters.extract prms.readout.c in
+  ( AD.Maths.((l / AD.F (Float.of_int n_tasks)) + (F 0.01 * l2norm_sqr' c))
+  , AD.unpack_arr us )
 
 let save_results suffix prms tasks =
   Array.iteri tasks ~f:(fun i t ->
@@ -348,22 +354,16 @@ let save_results suffix prms tasks =
         Owl.Mat.save_txt ~out:(file "us") us))
 
 let final_prms =
-  (* let in_each_iteration ~prms k = *)
-    (* if Int.(k % 100 = 0) then save_results (in_dir "train") prms tasks;
-    if Int.(k % 100 = 0)
-    then
-      C.root_perform (fun () ->
-          Mat.save_txt
-            ~out:(in_dir "nullspace")
-            (AD.unpack_arr AD.Maths.(x0 *@ transpose c))) *)
+  let in_each_iteration ~prms k =
+    if Int.(k % 100 = 0) then save_results (in_dir "train") prms tasks
+  in
   I.train
     ~max_iter:2000
     ~loss
     ~recycle_u:false
-    ~eta:(`of_iter (fun k -> Float.(0.008 / (1. + sqrt (of_int k / 10.)))))
-    ~init_prms:prms
-    (* ~in_each_iteration *)
-    ~save_progress_to:(1, 100, in_dir "progress")
+    ~eta:(`of_iter (fun k -> Float.(eta / (1. + sqrt (of_int k / n_decay)))))
+    ~init_prms:prms (* ~in_each_iteration *)
+    ~save_progress_to:(1, 20, in_dir "progress")
     tasks
 
 (* 

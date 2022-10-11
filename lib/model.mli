@@ -15,6 +15,7 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) : sig
     -> ?u_init:Mat.mat
     -> ?single_run:bool
     -> ?opt:bool
+    -> ?rerun:bool
     -> n:int
     -> m:int
     -> x0:AD.t

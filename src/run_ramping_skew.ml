@@ -91,7 +91,7 @@ let d_phi_x x = AD.Maths.(AD.d_requad (x / beta))
 let d2_phi_x x = AD.Maths.(F 1. / beta * AD.d2_requad (x / beta)) *)
 let link_f x = phi_x x
 let target i = targets.(i)
-let dt = 5E-4
+let dt = 2E-3
 let lambda_prep = lambda *. scale_prep
 let lambda_mov = lambda *. scale_mov
 let n_out = 2
@@ -200,7 +200,11 @@ what about one population receiving modulated inputs about the target?
 
 let baseline_input =
   C.broadcast' (fun () ->
-      AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose)
+      let a_discrete =
+        Linalg.D.(expm Mat.(transpose w *$ Float.(dt /. tau))) |> AD.pack_arr
+      in
+      let x0 = AD.Maths.transpose x0 in
+      AD.Maths.(x0 + neg (link_f x0 *@ a_discrete)))
 
 let x0 =
   AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0 |> AD.Maths.transpose
@@ -250,7 +254,7 @@ let phi_u x = phi_x x
   let d2_phi_u x = d2_phi_x x
 end) *)
 
-module D0 = Dynamics.Arm_Plus (struct
+module D0 = Dynamics.Arm_Discrete (struct
   let phi_x x = phi_x x
   let d_phi_x x = d_phi_x x
   let phi_u x = x

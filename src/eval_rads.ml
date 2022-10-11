@@ -22,8 +22,8 @@ let save_all = Cmdargs.(check "-save_all")
 let soc = Cmdargs.(check "-soc")
 let sim_soc = Cmdargs.(check "-sim_soc")
 let skew = Cmdargs.(check "-skew")
-let triang = Cmdargs.(check "-triang")
-let lr = Cmdargs.(check "-lr")
+let rdn = Cmdargs.(check "-rdn")
+let discrete = Cmdargs.(check "-discrete")
 let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.5)
 let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
 let tau_mov = Cmdargs.(get_float "-tau_mov" |> default 600.)
@@ -34,12 +34,14 @@ let n_lr = Cmdargs.(get_int "-n_lr" |> default 1)
 let seed = Cmdargs.(get_int "-seed" |> default 1)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
-let n_targets = 8
+let n_targets = 1
+let n_target = Cmdargs.(get_int "-n_target" |> default 1)
 let net_name = if soc then "soc" else if skew then "skew" else "rdn"
 
 let targets =
   C.broadcast' (fun () ->
-      Array.init n_targets ~f:(fun i ->
+      Array.init n_targets ~f:(fun _ ->
+          let i = n_target in
           let radius = 0.12 in
           let theta = Float.(of_int i *. Const.pi *. 2. /. of_int n_targets) in
           let x = Maths.(radius *. cos theta) in
@@ -51,7 +53,8 @@ let targets =
 
 let hand_targets =
   C.broadcast' (fun () ->
-      Array.init n_targets ~f:(fun i ->
+      Array.init n_targets ~f:(fun _ ->
+          let i = n_target in
           let radius = 0.12 in
           let theta = Float.(of_int i *. Const.pi *. 2. /. of_int n_targets) in
           let x = Maths.(radius *. cos theta) in
@@ -78,7 +81,7 @@ let d_phi_x x = AD.Maths.(AD.d_requad (x / beta))
 let d2_phi_x x = AD.Maths.(F 1. / beta * AD.d2_requad (x / beta)) *)
 let link_f x = phi_x x
 let target i = targets.(i)
-let dt = 5E-3
+let dt = 2E-3
 let lambda_prep = lambda *. scale_prep
 let lambda_mov = lambda *. scale_mov
 let n_out = 2
@@ -102,13 +105,12 @@ let t_preps = [| 0.3 |]
 let radii =
   if soc
   then
-    [| 0.2
-     ; 0.4
-     ; 0.6
-     ; 0.9
+    [| 0.3
+     ; 0.5
+     ; 0.7
+     ; 0.8
      ; 1.0
      ; 1.1
-     ; 1.2
      ; 1.3
      ; 1.4
      ; 1.5
@@ -116,11 +118,13 @@ let radii =
      ; 1.7
      ; 1.8
      ; 1.9
-     ; 2.0
+     ; 2.1
      ; 2.2
      ; 2.7
      ; 3.2
      ; 3.7
+     ; 1.0
+     ; 1.5
      ; 2.0
      ; 2.5
      ; 3.0
@@ -132,6 +136,7 @@ let radii =
      ; 6.0
      ; 6.5
      ; 10.0
+     ; 1.3
      ; 3.1
      ; 3.4
      ; 3.6
@@ -206,16 +211,14 @@ let radii =
      ; 11.5
      ; 12.0
      ; 12.5
-     ; 13.0
-     ; 13.5
-     ; 14.0
-     ; 14.5
-     ; 15.0
     |]
+    (* ; 13.0
+    ; 13.5
+    ; 14.0
+    ; 14.5
+    ; 15.0 *)
     (* [|0.1; 0.2; 0.4; 0.6; 0.9; 1.3; 2.2; 2.7; 3.2; 3.7; 0.5; 0.8; 1.0; 1.5; 2.0; 2.5; 3.0; 3.5; 4.0; 4.5; 5.0; 5.5; 6.0; 6.2;  6.5;6.7; 7.0; 7.3; 7.5; 7.7; 8.0; 8.2; 8.5; 8.7; 8.9; 9.1; 9.3; 9.5; 9.7; 10.0; 10.5; 10.7; 11.0; 11.5; 12.0; 12.5; 13.0; 13.5;  14.0; 14.5; 15.0|]  *)
-  else [| sa |]
-
-(* [|0.1; 0.5; 0.8; 1.0; 1.5; 2.0; 2.5; 3.0; 3.5; 4.0; 4.5; 5.0; 5.5; 6.0; 6.5|] *)
+  else [| 0.1; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0.8; 0.9; 1.0; 1.1 |]
 
 let c =
   C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
@@ -253,7 +256,14 @@ let _ = Stdio.printf "N targets : %i %!" n_targets
 
 module U = Priors.Gaussian
 
-module D0 = Dynamics.Arm_Discrete (struct
+module D0 =
+(* if discrete then Dynamics.Arm_Discrete (struct
+  let phi_x x = phi_x x
+  let d_phi_x x = d_phi_x x
+  let phi_u x = x
+  let d_phi_u _ = AD.Mat.eye m
+end) else  *)
+Dynamics.Arm_Plus (struct
   let phi_x x = phi_x x
   let d_phi_x x = d_phi_x x
   let phi_u x = x
@@ -275,11 +285,19 @@ let dt_scaling = Float.(dt /. 1E-3 *. 1000.)
 let make_prms radius =
   let w =
     if soc
-    then Mat.(load_txt (Printf.sprintf "%s/socs/w_rad_%.1f_sa_%.2f" data_dir radius sa))
+    then
+      Mat.(
+        load_txt (Printf.sprintf "%s/socs/w_rad_%.1f_sa_%.2f_%i" data_dir radius sa seed))
     else (
       let m = Mat.gaussian ~sigma:Float.(radius /. sqrt (of_int m)) m m in
       if skew then Mat.(((m - transpose m) /$ 2.) + (sa $* Mat.(eye 200))) else m)
   in
+  (* let baseline_input =
+    let a_discrete =
+      Linalg.D.(expm Mat.(transpose w *$ Float.(dt /. tau))) |> AD.pack_arr
+    in
+    let x0 = AD.Maths.transpose x0 in
+    AD.Maths.(neg (link_f x0 *@ a_discrete) + x0) *)
   let baseline_input =
     AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose
   in
@@ -318,12 +336,12 @@ let tasks =
   C.broadcast' (fun () ->
       let tasks = [] in
       let rec add_task i t =
-        if Int.(i < n_targets * Array.length radii)
+        if Int.(i < Array.length radii)
         then (
+          let n_rad = i in
+          let n_target = n_target in
           let new_t =
             try
-              let n_rad = i / n_targets in
-              let n_target = Int.rem i n_targets in
               let prms, w = make_prms radii.(n_rad) in
               ( n_target
               , Model.
@@ -334,7 +352,7 @@ let tasks =
                   ; t_hold = Some 0.2
                   ; t_pauses = None
                   ; scale_lambda = None
-                  ; target = AD.pack_arr (target n_target)
+                  ; target = AD.pack_arr (target 0)
                   ; theta0
                   ; tau = 150E-3
                   }
@@ -343,7 +361,9 @@ let tasks =
               , prms )
               :: t
             with
-            | _ -> t
+            | e ->
+              Stdio.printf "%s failed rad %f %!" (Exn.to_string e) radii.(n_rad);
+              t
           in
           add_task Int.(i + 1) new_t)
         else t
@@ -367,24 +387,32 @@ let get_idx t =
 
 let () =
   let x0 = x0 in
-  Array.iteri tasks ~f:(fun i (n_target, t, rad, w, prms) ->
-      if true (* Int.(i % C.n_nodes = C.rank) *)
+  Array.iteri tasks ~f:(fun i (_, t, rad, w, prms) ->
+      if Int.(i % C.n_nodes = C.rank)
       then (
         try
           let norm_w = Mat.l2norm' w in
+          let _ = Stdio.printf "%i %f %!" n_target rad in
           let _ =
             if Int.(n_target = 0)
-            then
+            then (
               Mat.save_txt
-                ~out:(in_dir (Printf.sprintf "w_%s_%.1f_%.1f" net_name rad sa))
-                w
+                ~out:
+                  (in_dir
+                     (Printf.sprintf "w_%s_%.1f_%.1f_%i_%i" net_name rad sa seed n_target))
+                w;
+              Mat.save_txt
+                ~out:
+                  (in_dir
+                     (Printf.sprintf "c_%s_%.1f_%.1f_%i_%i" net_name rad sa seed n_target))
+                (AD.unpack_arr c))
             else Stdio.printf "tree %!"
           in
           let n_prep = Float.to_int (t.t_prep /. dt) in
           let t_prep_int = Float.to_int (1000. *. t.t_prep) in
           let _ = Stdio.printf "abc %!" in
           let xs, us, l, quus, _ =
-            I.solve ~u_init:Mat.(gaussian ~sigma:0. 4001 m) ~n:(m + 4) ~m ~x0 ~prms t
+            I.solve ~u_init:Mat.(gaussian ~sigma:0. 5001 m) ~n:(m + 4) ~m ~x0 ~prms t
           in
           let _ = Stdio.printf "abc %!" in
           let eigs, re, im = eigenvalues w in
@@ -398,7 +426,8 @@ let () =
             Mat.of_arrays [| [| rad; norm_w; pi; AD.unpack_flt l; max_eig; sa |] |]
           in
           Mat.save_txt
-            ~out:(in_dir (Printf.sprintf "%s_%i_%.1f_%.1f" net_name n_target rad sa))
+            ~out:
+              (in_dir (Printf.sprintf "%s_%i_%.1f_%.1f_%i" net_name n_target rad sa seed))
             res
         with
-        | _ -> Stdio.printf "fail %i" n_target))
+        | e -> Stdio.printf "%s" (Exn.to_string e)))

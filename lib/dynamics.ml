@@ -131,7 +131,7 @@ module Arm_Linear = struct
         let mat = AD.Maths.(concatenate ~axis:0 [| b1; b2; b3 |]) in
         AD.Maths.((mat * _dt) + AD.Mat.eye n) |> AD.Maths.transpose
     in
-    Some _dyn_x
+    None
 
   let dyn_u =
     let _dyn_u ~readout:_ ~theta ~task =
@@ -145,7 +145,7 @@ module Arm_Linear = struct
       in
       fun ~k:_ ~x:_ ~u:_ -> AD.Maths.(transpose (mat * dt))
     in
-    Some _dyn_u
+    None
 end
 
 module Linear = struct
@@ -178,7 +178,7 @@ module Linear = struct
       let _dt = AD.F dt in
       fun ~k:_ ~x:_ ~u:_ -> AD.Maths.((a * _dt) + AD.Mat.eye n)
     in
-    Some _dyn_x
+    None
 
   let dyn_u =
     let _dyn_u ~readout:_ ~theta ~task =
@@ -188,7 +188,7 @@ module Linear = struct
       let b = AD.Maths.(b / AD.F tau) in
       fun ~k:_ ~x:_ ~u:_ -> AD.Maths.(b * dt)
     in
-    Some _dyn_u
+    None
 end
 
 module Arm_Plus (X : sig

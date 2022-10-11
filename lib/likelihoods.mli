@@ -64,3 +64,7 @@ module Ramping_Integrator (X : sig
   val phi_x : AD.t -> AD.t
   val phi_t : AD.t -> AD.t
 end) : Likelihood_T with type 'a P.prm = 'a Ramping_P.prm
+
+module Reach_Tgt (X : sig
+  val label : string
+end) : Likelihood_T with type 'a P.prm = 'a Reach_Tgt_P.prm

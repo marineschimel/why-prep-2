@@ -110,18 +110,17 @@ let _ =
   ( Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/cp" n_dim)) corr_p
   , Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/cm" n_dim)) corr_m )
 
+let proj x modes =
+  (*x is T*N and modes is N*n_dim*)
+  let proj = Mat.(x *@ modes) in
+  proj
 
-  let proj x modes =
-    (*x is T*N and modes is N*n_dim*)
-    let proj = Mat.(x *@ modes) in
-    proj
-  
-  (*proj is T*n_dim*)
-  let reconstructed proj modes = Mat.(proj *@ transpose modes)
-  
-  let cp, varp, _ = Linalg.D.svd cov_p 
-  let cm, varm, _ = Linalg.D.svd cov_m 
-  (*T*N*)
+(*proj is T*n_dim*)
+let reconstructed proj modes = Mat.(proj *@ transpose modes)
+let cp, varp, _ = Linalg.D.svd cov_p
+let cm, varm, _ = Linalg.D.svd cov_m
+
+(*T*N*)
 let proj2d =
   let m = Arr.reshape (snd preprocessed_data) [| n_reaches; duration; -1 |] in
   fun i ->
@@ -131,14 +130,20 @@ let proj2d =
     in
     let proj_prep = proj x cp in
     let proj_mov = proj x cm in
-    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pre_proj_prep_%i" n_dim i)) proj_prep;
-    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pre_proj_mov_%i" n_dim i)) proj_mov
+    Mat.save_txt
+      ~out:(in_dir (Printf.sprintf "analysis_%i/pre_proj_prep_%i" n_dim i))
+      proj_prep;
+    Mat.save_txt
+      ~out:(in_dir (Printf.sprintf "analysis_%i/pre_proj_mov_%i" n_dim i))
+      proj_mov
 
 let _ = Array.mapi (fun i _ -> proj2d i) reaches
+
 let pairwise_corr =
   let cp = Mat.reshape corr_p [| n * n; 1 |]
   and cm = Mat.reshape corr_m [| n * n; 1 |] in
-  Mat.(cp @|| cm) |> Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pairwise" n_dim))
+  Mat.(cp @|| cm)
+  |> Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pairwise" n_dim))
 
 module Prms = struct
   type 'a t = { w : 'a } [@@deriving prms]
@@ -202,7 +207,9 @@ let proj2d =
     in
     let proj_prep = proj x wp in
     let proj_mov = proj x wm in
-    Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/proj_prep_%i" n_dim i)) proj_prep;
+    Mat.save_txt
+      ~out:(in_dir (Printf.sprintf "analysis_%i/proj_prep_%i" n_dim i))
+      proj_prep;
     Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/proj_mov_%i" n_dim i)) proj_mov
 
 let _ = Array.mapi (fun i _ -> proj2d i) reaches
@@ -217,7 +224,9 @@ let captured_variance, top_mp, top_mv =
     Mat.get_slice [ []; [ 0; n_var - 1 ] ] wp, Mat.get_slice [ []; [ 0; n_var - 1 ] ] wm
   in
   let m = Mat.(transpose top_mp *@ cov_p *@ top_mp) in
-  Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/pct_var_own" n_dim)) Mat.(pct_varp @= pct_varm);
+  Mat.save_txt
+    ~out:(in_dir (Printf.sprintf "analysis_%i/pct_var_own" n_dim))
+    Mat.(pct_varp @= pct_varm);
   let x = Mat.(x_mov *@ top_mp *@ transpose top_mp) in
   let y = Mat.(x_prep *@ top_mv *@ transpose top_mv) in
   let z = Mat.(transpose top_mv *@ cov_p *@ top_mv) in
@@ -245,9 +254,6 @@ let occupancy =
     Mat.get_slice
       [ [ i * duration; ((i + 1) * duration) - 1 ]; [] ]
       (snd preprocessed_data)
-    (* let m = Mat.load_txt (in_dir Printf.(sprintf "rates_%i_%i" i t_prep)) in
-    let ma = Mat.get_fancy [ R [ 0; duration - 1 ]; R [ 0; -1 ] ] m in
-    ma *)
   in
   let projections x =
     let rp = reconstructed (proj x wp) wp in
@@ -279,5 +285,9 @@ let occupancy =
     , let x = Arr.var ~axis:2 rms |> Arr.sum ~axis:1 |> Arr.to_array in
       Mat.of_array x (-1) 1 )
   in
-  ( Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/vprep" n_dim)) Mat.(vprep /$ max' vprep)
-  , Mat.save_txt ~out:(in_dir (Printf.sprintf "analysis_%i/vmov" n_dim)) Mat.(vmov /$ max' vmov) )
+  ( Mat.save_txt
+      ~out:(in_dir (Printf.sprintf "analysis_%i/vprep" n_dim))
+      Mat.(vprep /$ max' vprep)
+  , Mat.save_txt
+      ~out:(in_dir (Printf.sprintf "analysis_%i/vmov" n_dim))
+      Mat.(vmov /$ max' vmov) )

@@ -25,6 +25,7 @@ let skew = Cmdargs.(check "-skew")
 let triang = Cmdargs.(check "-triang")
 let lr = Cmdargs.(check "-lr")
 let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.5)
+let sa = Cmdargs.(get_float "-sa" |> default 0.0)
 let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
 let tau_mov = Cmdargs.(get_float "-tau_mov" |> force ~usage:"tau_mov")
 let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.)
@@ -86,9 +87,7 @@ let _ =
        (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-
-let t_preps =
-  [| 0.; 0.025; 0.05; 0.07; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0.8; 0.9; 1.0 |]
+let t_preps = [| 0.3 |]
 
 let w =
   C.broadcast' (fun () ->
@@ -102,7 +101,7 @@ let w =
       else (
         let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
         if skew
-        then Mat.((m - transpose m) /$ 2.)
+        then Mat.(((m - transpose m) /$ 2.) + Mat.(sa $* eye 200))
         else if triang
         then Mat.triu ~k:1 m
         else m))
@@ -115,11 +114,9 @@ let w =
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 
 let c =
-  C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/c" data_dir)) |> AD.pack_arr)
+  C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
 
-let x0 =
-  C.broadcast' (fun () ->
-      Mat.(load_txt (Printf.sprintf "%s/x0" data_dir)) |> Mat.transpose |> AD.pack_arr)
+let x0 = C.broadcast' (fun () -> AD.Mat.gaussian ~sigma:0.0001 m 1)
 
 let eigenvalues m =
   let v = Linalg.D.eigvals m in
@@ -223,7 +220,11 @@ module L0 = Likelihoods.Ramping (struct
   let phi_t t = phi_t t
 end)
 
+let t_tot = 0.6
+
 module R = Readout
+
+let dt_scaling = Float.(dt /. 1E-3 *. 1000.)
 
 let prms =
   let open Owl_parameters in
@@ -232,10 +233,10 @@ let prms =
         Likelihoods.Ramping_P.
           { c = (pinned : setter) c
           ; c_mask = None
-          ; qs_coeff = (pinned : setter) (AD.F 1.)
-          ; t_coeff = (pinned : setter) (AD.F t_coeff)
-          ; g_coeff = (pinned : setter) (AD.F 1.)
-          ; tau_mov = (pinned : setter) (AD.F Float.(0.001 *. tau_mov))
+          ; qs_coeff = (pinned : setter) (AD.F Float.(dt_scaling))
+          ; t_coeff = (pinned : setter) (AD.F Float.(t_coeff *. dt_scaling))
+          ; g_coeff = (pinned : setter) (AD.F Float.(dt_scaling))
+          ; tau_mov = (pinned : setter) (AD.F Float.(t_tot))
           }
       in
       let dynamics =
@@ -247,8 +248,8 @@ let prms =
       in
       let prior =
         Priors.Gaussian_P.
-          { lambda_prep = (pinned : setter) (AD.F lambda_prep)
-          ; lambda_mov = (pinned : setter) (AD.F lambda_mov)
+          { lambda_prep = (pinned : setter) (AD.F Float.(lambda_prep *. dt_scaling))
+          ; lambda_mov = (pinned : setter) (AD.F Float.(lambda_mov *. dt_scaling))
           }
       in
       let readout = R.Readout_P.{ c = (pinned : setter) c } in

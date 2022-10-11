@@ -889,17 +889,20 @@ struct
       then (
         let t_diff_1 = AD.Maths.(AD.F Float.(dt * of_int Int.(k - n_1))) in
         let force_pause =
-          if k > n_1 then AD.Maths.(pause_coeff * l2norm_sqr' theta_vel) else AD.F 0.
+          if k > n_1
+          then
+            AD.Maths.(
+              pause_coeff * (l2norm_sqr' theta_vel + l2norm_sqr' (theta_pos - tgt1)))
+          else AD.F 0.
         in
         AD.Maths.(
-          F 0.5
-          * g_coeff
+          g_coeff
           * ((X.phi_t (t_diff_1 / tau_mov_1) * l2norm_sqr' (theta_pos - tgt1))
             + force_pause)))
       else (
         let t_diff_2 = AD.Maths.(AD.F Float.(dt * of_int Int.(k - n_2))) in
         AD.Maths.(
-          F 0.5 * g_coeff * X.phi_t (t_diff_2 / tau_mov_2) * l2norm_sqr' (theta_pos - tgt2)))
+          g_coeff * X.phi_t (t_diff_2 / tau_mov_2) * l2norm_sqr' (theta_pos - tgt2)))
 
   let neg_jac_t = None
   let neg_hess_t = None
@@ -951,6 +954,29 @@ struct
           g_coeff * X.phi_t (t_diff / tau_mov) * l2norm_sqr' (theta_pos - target_pos)))
   (* AD.Maths.(AD.F Float.of_int Int.(k - n_prep)
           * (l2norm_sqr' (theta_pos - target_pos) )) *)
+
+  let neg_jac_t = None
+  let neg_hess_t = None
+end
+
+module Reach_Tgt (X : sig
+  val label : string
+end) =
+struct
+  module P = Owl_parameters.Make (Reach_Tgt_P)
+  open Reach_Tgt_P
+
+  let requires_linesearch = false
+  let label = X.label
+
+  let neg_logp_t ~readout ~prms ~task =
+    let dt = task.dt in
+    let d_mov = Float.to_int (task.t_movs.(0) /. dt) in
+    let target = task.target in
+    fun ~k ~z_t ->
+      if k > Int.(d_mov - 5)
+      then AD.Maths.(AD.F 100. * l2norm_sqr' (z_t - target))
+      else AD.F 0.
 
   let neg_jac_t = None
   let neg_hess_t = None

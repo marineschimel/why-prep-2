@@ -21,17 +21,23 @@ let results_dir =
 let nonlin = if Cmdargs.(check "-tanh") then "tanh" else "relu"
 let save_all = Cmdargs.(check "-save_all")
 let soc = Cmdargs.(check "-soc")
+let sim_soc = Cmdargs.(check "-sim_soc")
 let skew = Cmdargs.(check "-skew")
+let triang = Cmdargs.(check "-triang")
+let lr = Cmdargs.(check "-lr")
 let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.5)
 let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
-let tau_mov = Cmdargs.(get_float "-tau_mov" |> force ~usage:"tau_mov")
+let tau_mov = Cmdargs.(get_float "-tau_mov" |> default 600.)
 let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.)
 let exponent = Cmdargs.(get_int "-exponent" |> force ~usage:"exponent")
+let n_lr = Cmdargs.(get_int "-n_lr" |> default 1)
+let sa_tgt = Cmdargs.(get_float "-sa_tgt" |> default 1.)
 let seed = Cmdargs.(get_int "-seed" |> default 1)
+let tgt_to_rerun = Cmdargs.(get_int "-tgt_to_rerun" |> default 2)
+let prep_time = Cmdargs.(get_int "-prep_time" |> default 100)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
-let t_tot = 0.6
 
 let targets =
   C.broadcast' (fun () ->
@@ -105,17 +111,78 @@ let _ =
        (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
+let t_preps = [| 0.1; 0.5; 0.8; 0.05; 0.8; 0.7 |]
 
-let t_preps =
-  [| 0.; 0.025; 0.05; 0.07; 0.1; 0.15; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0.8; 0.9; 1.0 |]
+(* ; 0.01
+   ; 0.025
+   ; 0.05
+   ; 0.07
+   ; 0.09
+   ; 0.1
+   ; 0.15
+   ; 0.2
+   ; 0.25
+   ; 0.3
+   ; 0.35
+   ; 0.4
+   ; 0.5
+   ; 0.6
+   ; 0.7
+   ; 0.8
+   ; 0.9
+   ; 1.0
+  |] *)
+(* *)
+
+let u, v =
+  let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
+  let q, r, _ = Linalg.D.qr m in
+  ( Mat.get_slice [ []; [ 0; n_lr - 1 ] ] m
+  , Mat.get_slice [ []; [ n_lr; (2 * n_lr) - 1 ] ] m )
+
+let _ =
+  Stdio.printf
+    "%i %i %i %i %!"
+    (Mat.row_num u)
+    (Mat.col_num u)
+    (Mat.row_num v)
+    (Mat.col_num v)
+
+let eigenvalues m =
+  let v = Linalg.D.eigvals m in
+  let re = Dense.Matrix.Z.re v in
+  let im = Dense.Matrix.Z.im v in
+  Mat.(concat_horizontal (transpose re) (transpose im))
+
+let get_sa m =
+  let v = Linalg.D.eigvals m in
+  let v = Dense.Matrix.Z.re v in
+  Mat.max' v
 
 let w =
   C.broadcast' (fun () ->
       if soc
       then Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed))
+      else if sim_soc
+      then (
+        let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)) in
+        let transformed_w, s = Misc.transform w in
+        let _ =
+          Mat.save_txt ~out:(Printf.sprintf "%s/sim_norm" data_dir) (Mat.l2norm ~axis:1 s)
+        in
+        transformed_w)
+      else if lr
+      then (
+        let m = Mat.(u *@ transpose v) in
+        let max_eig = get_sa m in
+        if Float.(sa_tgt < 1.) then Mat.(m /$ Float.(max_eig *. sa_tgt)) else m)
       else (
         let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
-        if skew then Mat.((m - transpose m) /$ 2.) else m))
+        if skew
+        then Mat.((m - transpose m) /$ 2.)
+        else if triang
+        then Mat.triu ~k:1 m
+        else m))
 
 (* let _ =
   C.root_perform (fun () ->
@@ -124,25 +191,20 @@ let w =
 
 let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 
-let c = C.broadcast' (fun () -> AD.pack_arr (Mat.load_txt (in_dir "c")))
+let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir)))
 
 let x0 =
   C.broadcast' (fun () ->
-      try
-        let m = Mat.load_txt (in_dir "rates_0_0") in
-        AD.pack_arr (Mat.get_slice [ [ 0 ] ] m |> fun z -> Arr.reshape z [| -1; 1 |])
-      with
-      | _ ->
-        let m = Mat.load_txt (in_dir "rates_1_0") in
-        AD.pack_arr (Mat.get_slice [ [ 0 ] ] m |> fun z -> Arr.reshape z [| -1; 1 |]))
+      let m = Mat.load_txt (in_dir "rates_0_0") in
+      AD.pack_arr (Mat.get_slice [ [ 0 ] ] m |> fun z -> Arr.reshape z [| -1; 1 |]))
 
-let eigenvalues m =
-  let v = Linalg.D.eigvals m in
-  let re = Dense.Matrix.Z.re v in
-  let im = Dense.Matrix.Z.im v in
-  Mat.(concat_horizontal (transpose re) (transpose im))
-
-let _ = C.root_perform (fun () -> Mat.save_txt ~out:(in_dir "eigs") (eigenvalues w))
+let _ =
+  C.root_perform (fun () ->
+      Mat.save_txt ~out:(in_dir "eigs") (eigenvalues w);
+      Mat.save_txt
+        ~out:(in_dir "eigs_wrec")
+        (eigenvalues Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)));
+      Mat.save_txt ~out:(in_dir "w") w)
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
 
 (* let x0 =
@@ -162,6 +224,11 @@ let _ =
 let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/c" dir) (AD.unpack_arr c))
+
+(* 
+let _ =
+  C.root_perform (fun () ->
+      Mat.save_txt ~out:(Printf.sprintf "%s/x0" dir) (AD.unpack_arr x0)) *)
 
 let b = Mat.eye m
 
@@ -215,6 +282,16 @@ let save_prms suffix prms = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffi
 let save_task suffix task = Misc.save_bin (Printf.sprintf "%s/prms_%s" dir suffix) task
 let epsilon = 1E-1
 
+(* let phi_x x = let x = AD.unpack_arr x in let y = Mat.map (fun x -> if Float.(x > epsilon) then x else if Float.(x > neg epsilon) 
+    then Float.((x +. epsilon)**2. /. ((4. *. epsilon))) 
+else 0.) x in AD.pack_arr y 
+
+let d_phi_x x = let x = AD.unpack_arr x in let y = Mat.map (fun x -> if Float.(x > epsilon) then 1. 
+else if Float.(x > neg epsilon)  then ((x +. epsilon)/.(2. *. epsilon)) else 0.) x in AD.pack_arr y
+
+let d2_phi_x x = let x = AD.unpack_arr x in let y = Mat.map (fun x -> if Float.(x > epsilon) then 0. 
+else if Float.(x > neg epsilon) then Float.(1./(2. * epsilon)) else 0.) x in AD.pack_arr y *)
+
 module U = Priors.Gaussian
 (* 
 _Phi (struct
@@ -236,9 +313,11 @@ module L0 = Likelihoods.Ramping (struct
   let phi_t t = phi_t t
 end)
 
+let t_tot = 0.6
+
 module R = Readout
 
-let dt_scaling = Float.(dt /. 1E-3 *. 100.)
+let dt_scaling = Float.(dt /. 1E-3 *. 1000.)
 
 let prms =
   let open Owl_parameters in
@@ -286,6 +365,7 @@ let save_results suffix xs us quus n_target n_prep task =
   let _ = Stdio.printf "nprep is %i %!" n_prep in
   let xs = AD.unpack_arr xs in
   let us = AD.unpack_arr us in
+  let _ = Stdio.printf "%i %i %!" (Mat.row_num xs) (Mat.col_num xs) in
   let torque_err, target_err =
     Analysis_funs.cost_x
       ~f:(fun k x ->
@@ -341,6 +421,12 @@ let save_results suffix xs us quus n_target n_prep task =
     ~out:(file "quus")
     (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
   Owl.Mat.save_txt
+    ~out:(file "summary")
+    (Mat.of_array
+       [| t_prep; prep_idx; loss; input_cost_tot; torque_err; target_err; ratio_u_cost |]
+       1
+       (-1));
+  Owl.Mat.save_txt
     ~out:(file "u_cost")
     (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
   Owl.Mat.save_txt
@@ -370,44 +456,45 @@ let save_results suffix xs us quus n_target n_prep task =
     ~out:(file "torques")
     Mat.((rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
 
-let _ =
+let () =
   let x0 = x0 in
   let _ = save_prms "" prms in
-  let n_tasks = Array.length tasks in
-  Array.iteri tasks ~f:(fun i t ->
+  Array.iteri tasks ~f:(fun i (n_target, t) ->
       if Int.(i % C.n_nodes = C.rank)
       then (
         try
-          let n_target, t = t in
-          let n_prep = Float.to_int (t.t_prep /. dt) in
-          let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-          let m =
-            Mat.load_txt (in_dir (Printf.sprintf "rates_%i_%i" n_target t_prep_int))
-          in
-          ()
+          if (* if Int.(n_target = 2) *)
+             Int.(
+               n_target = tgt_to_rerun && Int.(of_float (t.t_prep *. 1000.)) = prep_time)
+          then (
+            let n_prep = Float.to_int (t.t_prep /. dt) in
+            let t_prep_int = Float.to_int (1000. *. t.t_prep) in
+            let xs, us, l, quus, _ =
+              I.solve
+                ~u_init:Mat.(gaussian ~sigma:0.0001 2001 m)
+                ~n:(m + 4)
+                ~m
+                ~x0
+                ~prms
+                ~rerun:true
+                t
+            in
+            let () =
+              save_results
+                (Printf.sprintf "%i_%i" n_target t_prep_int)
+                xs
+                us
+                quus
+                n_target
+                n_prep
+                t
+            in
+            if save_all
+            then (
+              let _ = Stdio.printf "success %i %i" n_target t_prep_int in
+              Mat.save_txt
+                ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
+                (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
+              save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t))
         with
-        | e ->
-          let _ = Exn.to_string e in
-          let n_target, t = t in
-          let n_prep = Float.to_int (t.t_prep /. dt) in
-          let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-          let xs, us, l, quus, _ =
-            I.solve ~u_init:Mat.(gaussian ~sigma:0.01 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
-          in
-          let _ =
-            save_results
-              (Printf.sprintf "%i_%i" n_target t_prep_int)
-              xs
-              us
-              quus
-              n_target
-              n_prep
-              t
-          in
-          Stdio.printf "success %i %i" n_target t_prep_int;
-          Mat.save_txt
-            ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
-            (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-          save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t))
-
-let _ = C.barrier ()
+        | e -> Stdio.printf "%s : fail target %i" (Exn.to_string e) n_target))

@@ -16,7 +16,18 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
   let linesearch = U.requires_linesearch || D.requires_linesearch || L.requires_linesearch
 
   (* n : dimensionality of state space; m : input dimension *)
-  let solve ?save ?u_init ?(single_run = false) ?(opt = false) ~n ~m ~x0 ~prms task =
+  let solve
+      ?save
+      ?u_init
+      ?(single_run = false)
+      ?(opt = false)
+      ?(rerun = false)
+      ~n
+      ~m
+      ~x0
+      ~prms
+      task
+    =
     let open Full_P in
     let module M = struct
       type theta = F.p
@@ -134,10 +145,14 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
           | None -> ()
           | Some f -> if k % 10 = 0 then f us
         in
-        if single_run
+        if not linesearch
+        then k >= 1
+        else if single_run
         then k >= 0
         else if opt
         then k >= 10 || Float.(pct_change < 1E-2)
+        else if rerun
+        then (k > 10 && Float.(pct_change < 1E-3)) || k > 25
         else (k > 10 && Float.(pct_change < 2E-4)) || k > 40
     in
     let us =
@@ -147,17 +162,17 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         List.init M.n_steps ~f:(fun k -> AD.pack_arr (Mat.get_slice [ [ k ] ] us))
     in
     (* try *)
-      let tau =
-        IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
-      in
-      let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
-      (* let quus = IP.differentiable_quus ~theta:prms x0 us in *)
-      ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
-      , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
-      , IP.differentiable_loss ~theta:prms tau
-      , List.init 1 ~f:(fun _ -> AD.Mat.zeros 1 1) (*quus*)
-      , true )
-    (* with
+    let tau =
+      IP.ilqr ~linesearch ~stop:(stop_ilqr IP.loss ~prms) ~us ~x0 ~theta:prms ()
+    in
+    let tau = AD.Maths.reshape tau [| M.n_steps + 1; -1 |] in
+    (* let quus = IP.differentiable_quus ~theta:prms x0 us in *)
+    ( AD.Maths.get_slice [ [ 0; -1 ]; [ 0; n - 1 ] ] tau
+    , AD.Maths.get_slice [ [ 0; -1 ]; [ n; -1 ] ] tau
+    , IP.differentiable_loss ~theta:prms tau
+    , List.init 1 ~f:(fun _ -> AD.Mat.zeros 1 1) (*quus*)
+    , true )
+  (* with
     | e ->
       Stdio.printf "%s %!" (Exn.to_string e);
       ( AD.Mat.zeros M.n_steps n
@@ -200,16 +215,24 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
           ~f:(fun i (accu_loss, accu_g) datai ->
             if Int.(i % C.n_nodes = C.rank)
             then (
-              let _ = Stdio.printf "Node %i \n" i in
-              let open AD in
-              let theta = make_reverse (Arr (Owl.Mat.copy theta)) (AD.tag ()) in
-              let prms = F.unpack handle theta in
-              let u_init = None in
-              (* us_init.(i) in *)
-              let loss, mu_u = loss ~u_init ~prms datai in
-              if recycle_u then us_init.(i) <- Some mu_u;
-              reverse_prop (F 1.) loss;
-              accu_loss +. unpack_flt loss, Owl.Mat.(accu_g + unpack_arr (adjval theta)))
+              try
+                let _ = Stdio.printf "Node %i \n" i in
+                let open AD in
+                let theta = make_reverse (Arr (Owl.Mat.copy theta)) (AD.tag ()) in
+                let prms = F.unpack handle theta in
+                let u_init = None in
+                (* us_init.(i) in *)
+                let loss, mu_u = loss ~u_init ~prms datai in
+                if recycle_u then us_init.(i) <- Some mu_u;
+                reverse_prop (F 1.) loss;
+                accu_loss +. unpack_flt loss, Owl.Mat.(accu_g + unpack_arr (adjval theta))
+              with
+              | e ->
+                Stdio.printf
+                  "Trial %i failed with some exception : %s"
+                  i
+                  (Exn.to_string e);
+                accu_loss, accu_g)
             else accu_loss, accu_g)
       in
       let loss = Mpi.reduce_float loss Mpi.Float_sum 0 Mpi.comm_world in

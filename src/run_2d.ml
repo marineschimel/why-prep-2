@@ -36,7 +36,7 @@ let nc_angle = Cmdargs.(get_int "-nc" |> force ~usage:"-nc")
 let c_angle = Maths.(Const.pi /. 8. *. Float.of_int nc_angle)
 
 let rads =
-  [| 0.0; 0.1; 0.4; 0.5; 0.8; 1.0; 1.5; 2.0; 2.5; 3.0; 4.0; 5.0; 6.0; 7.0; 8.0; 10.0 |]
+  [| 0.; 0.1; 0.4; 0.5; 0.8; 1.0; 1.5; 2.0; 2.5; 3.0; 4.0; 5.0; 6.0; 7.0; 8.0; 10.0 |]
 
 let save_all = Cmdargs.(check "-save_all")
 let in_dir s = Printf.sprintf "%s/%s" dir s
@@ -155,7 +155,7 @@ let c =
       let c0 = Mat.of_array [| 1.; 0. |] (-1) 1 in
       Mat.(rot_c *@ c0) |> Mat.transpose)
 
-let dt_scaling = Float.(dt /. 1E-3)
+let dt_scaling = 1.
 
 let prms =
   let open Owl_parameters in
@@ -216,6 +216,10 @@ let sum_mode, diff_mode =
 
 let projs w xs suffix =
   let a = Mat.(w - eye m) in
+  let _ =
+    Mat.print a;
+    Mat.print c
+  in
   let obs_gramian = Linalg.D.lyapunov Mat.(transpose a) Mat.(neg (transpose c) *@ c) in
   let ctr_gramian = Linalg.D.lyapunov a Mat.(eye m) in
   let obs_modes, _, _ = Linalg.D.svd obs_gramian in
@@ -240,7 +244,6 @@ let save_results suffix xs us quus n_target n_prep task =
   let _ = Stdio.printf "nprep is %i %!" n_prep in
   let xs = AD.unpack_arr xs in
   let us = AD.unpack_arr us in
-  let _ = Stdio.printf "%i %i %!" (Mat.row_num xs) (Mat.col_num xs) in
   let xs, thetas, us =
     Mat.get_slice [ []; [ 0; -3 ] ] xs, Mat.get_slice [ []; [ -2; -1 ] ] xs, us
   in
@@ -268,7 +271,14 @@ let () =
         let n_prep = Float.to_int (t.t_prep /. dt) in
         let t_prep_int = Float.to_int (1000. *. t.t_prep) in
         let xs, us, l, quus, _ =
-          I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 2) ~m ~x0 ~prms t
+          I.solve
+            ~u_init:Mat.(gaussian ~sigma:0. 2001 m)
+            ~rerun:true
+            ~n:(m + 2)
+            ~m
+            ~x0
+            ~prms
+            t
         in
         let prep_idx =
           let us_prep = AD.Maths.get_slice [ [ 0; n_prep - 1 ] ] us in
@@ -291,8 +301,8 @@ let () =
             Owl_parameters.extract prms.Full_P.generative.dynamics.Arm_Plus_P.a
             |> AD.unpack_arr
           in
-          projs w (AD.unpack_arr xs) (Printf.sprintf "x_%i" t_prep_int);
-          projs w (AD.unpack_arr us) (Printf.sprintf "u_%i" t_prep_int)
+          projs w (AD.unpack_arr xs) (Printf.sprintf "x_%.1f_%i" rad t_prep_int);
+          projs w (AD.unpack_arr us) (Printf.sprintf "u_%.1f_%i" rad t_prep_int)
         in
         if save_all
         then (

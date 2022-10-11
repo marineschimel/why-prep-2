@@ -5,18 +5,17 @@ open Lib
 let _ = Printexc.record_backtrace true
 let t_prep = Cmdargs.(get_int "-prep" |> force ~usage:"-prep")
 let t_prep_2 = Cmdargs.(get_int "-prep_2" |> default (t_prep + 800))
-let n_prep_2 = t_prep_2 / 5
 let dir = Cmdargs.(get_string "-d" |> force ~usage:"-d [dir to save in]")
 
 let dir =
-  "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams/monkeys_0.05_0.0000002_9.0/ramping_soc/seed_5_mixed"
+  "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/final_results/ramping_soc/seed_0_mixed"
 
 let in_dir seed s = Printf.sprintf "%s/%s" dir s
 
 (*Printf.sprintf "%s/seed_%i/%s" dir seed s*)
 let in_double_dir _seed s =
   Printf.sprintf
-    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams/monkeys_0.05_0.0000002_9.0/ramping_soc/seed_5_mixed/double_ramping3/pause_0.5_1.0_0.0000001_1.0_8.0/%s"
+    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/final_results/ramping_soc/seed_0_mixed/double_ramping3/pause_0.5_1.0_0.0000005_1.0_10.0/%s"
     s
 
 let superscript = Cmdargs.(get_string "-superscript" |> default "")
@@ -25,7 +24,7 @@ let compound = Cmdargs.check "-compound"
 
 let in_compound_dir _seed s =
   Printf.sprintf
-    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams/monkeys_0.05_0.0000002_9.0/ramping_soc/seed_5_mixed/double_ramping3/pause_0.5_1.0_0.0000001_1.0_8.0/%s"
+    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/final_results/ramping_soc/seed_0_mixed/double_ramping3/pause_0.1_1.0_0.0000005_1.0_10.0/%s"
     s
 
 (* Printf.sprintf "%s/300_350%s" dir superscript *)
@@ -35,6 +34,7 @@ let saving_dir = if compound then in_compound_dir else in_double_dir
 let n_dim = 6
 let n_var = 6
 let dt = 5E-3
+let n_prep_2 = Int.of_float Float.(of_int t_prep_2 /. (dt *. 1000.))
 let n_neurons = 200
 let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 let reach_0 = Mat.load_txt (in_dir 1 Printf.(sprintf "rates_%i_%i" 1 t_prep))
@@ -44,9 +44,9 @@ let double_reach_0 =
 
 (* |> Mat.get_slice [ [ 0; size_double ] ] *)
 
-let size_prep = 40
-let size_prep_2 = 40
-let size_mov = 200
+let size_prep = Int.of_float Float.(200. /. (dt *. 1000.))
+let size_prep_2 = Int.of_float Float.(200. /. (dt *. 1000.))
+let size_mov = Int.of_float Float.(200. /. (dt *. 1000.))
 let duration = Mat.row_num reach_0
 let double_duration = Mat.row_num double_reach_0
 let size_double = Int.(double_duration - 1)
@@ -102,7 +102,7 @@ let ls_double_reaches =
    ; 6, 5 (* ; 6, 4 *)
   |]
 
-let single_reaches = [| 1; 2; 3; 4; 6 |]
+let single_reaches = [| 0; 1; 2; 3; 4; 6; 7 |]
 let n_reaches = Array.length single_reaches
 let n_double_reaches = Array.length ls_double_reaches
 

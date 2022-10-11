@@ -5,11 +5,12 @@ open Base
 (*get the modes, as well as their eigenvalues*)
 (*compute the mean energy across movements as a function of time *)
 let n = 200
-
-let dir =
-  "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/linear_lambda_0.000001/ramping_soc/seed_0_mov"
-
+let dir = "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams_continuous_abg_2"
+let rad_w = 1.5
+let sa_w = 0.8
 let in_dir s = Printf.sprintf "%s/%s" dir s
+let seed = 0
+let net = "soc"
 
 let eigenvalues m =
   let v = Linalg.D.eigvals m in
@@ -18,8 +19,9 @@ let eigenvalues m =
   Mat.(concat_horizontal (transpose re) (transpose im))
 
 let w = Mat.load_txt (in_dir "w")
-let eigs_w = eigenvalues w
-let _ = Mat.save_txt ~out:(in_dir "eigs_w") eigs_w
+
+(* let eigs_w = eigenvalues w
+let _ = Mat.save_txt ~out:(in_dir "eigs_w") eigs_w *)
 let c = Mat.load_txt (in_dir "c")
 
 (*normalize c*)
@@ -43,6 +45,12 @@ let obs_c = obs_gramian a c
 let ctr = ctr_gramian a (Mat.eye 200)
 let ctr = Mat.(ctr /$ Float.(tr_p_disc /. 200.))
 (* obs_gramian a c *)
+
+let c_into_ctr, c_into_obs =
+  Mat.(trace (c *@ ctr *@ transpose c)), Mat.(trace (c *@ obs_c *@ transpose c))
+
+let _ =
+  Mat.save_txt ~out:(in_dir "projs_c") (Mat.of_arrays [| [| c_into_ctr; c_into_obs |] |])
 
 let obs_c_modes, obs_c_eigs =
   let obs_c_modes, _, _ = Linalg.D.svd obs_c in
