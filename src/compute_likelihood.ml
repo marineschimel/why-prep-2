@@ -1,14 +1,14 @@
 open Owl
 open Base
 
-let dir = "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/hyperparams_continuous_abg_3"
+let dir = "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/eval_rad_abg"
 let in_dir = Printf.sprintf "%s/%s" dir
 let rad_w = Cmdargs.(get_float "-rad" |> force ~usage:"-rad")
 let sa_w = Cmdargs.(get_float "-sa" |> force ~usage:"-sa")
 let net = Cmdargs.(get_string "-net" |> force ~usage:"-net")
 let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 let n_target = Cmdargs.(get_int "-n_target" |> force ~usage:"-n_target")
-let w = Mat.load_txt (in_dir (Printf.sprintf "w_%s_%.1f_%.1f_%i_0" net rad_w sa_w seed))
+let w = Mat.load_txt (in_dir (Printf.sprintf "w_%s_%.1f_%.1f_%i" net rad_w sa_w seed))
 let c = Mat.load_txt (in_dir (Printf.sprintf "c_%s_%.1f_%.1f_%i_0" net rad_w sa_w seed))
 let c = Mat.(c /$ l2norm' c)
 let n = 200
@@ -117,7 +117,8 @@ let all_betas_cbar =
       get_beta u)
   |> fun z -> Mat.concatenate z ~axis:0
 
-let _ =
+let _ = Stdio.printf "%f %f %f %!" (Mat.trace obs_c) (Mat.trace ctr) (Mat.l2norm' w)
+(* let _ =
   Mat.save_txt
     ~out:
       (in_dir
@@ -152,7 +153,7 @@ let _ =
     ~out:
       (in_dir (Printf.sprintf "tr_obs_%s_%.1f_%.1f_%i_%i" net rad_w sa_w seed n_target))
     (Mat.of_arrays [| [| tr_obs |] |])
-
+ *)
 (* open Owl
 open Base
 
