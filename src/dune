@@ -72,7 +72,7 @@
   double_ramping_scan
   compute_likelihood
   test_occupancy)
- (libraries accessor adam owl owl-ode cmdargs owl-opt owl-opt-lbfgs arm lib)
+ (libraries accessor adam owl cmdargs owl-opt owl-opt-lbfgs arm lib)
  (preprocess
   (pps ppx-owl-opt)))
 

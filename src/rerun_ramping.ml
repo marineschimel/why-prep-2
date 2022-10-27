@@ -22,6 +22,7 @@ let nonlin = if Cmdargs.(check "-tanh") then "tanh" else "relu"
 let save_all = Cmdargs.(check "-save_all")
 let soc = Cmdargs.(check "-soc")
 let sim_soc = Cmdargs.(check "-sim_soc")
+let nn_soc = Cmdargs.(check "-nn_soc")
 let skew = Cmdargs.(check "-skew")
 let triang = Cmdargs.(check "-triang")
 let lr = Cmdargs.(check "-lr")
@@ -111,7 +112,7 @@ let _ =
        (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-let t_preps = [| 0.1; 0.5; 0.8; 0.05; 0.8; 0.7 |]
+let t_preps = [| 0.07; 0.1; 0.3; 0.5; 0.8; 0.05; 0.8; 0.7 |]
 
 (* ; 0.01
    ; 0.025
@@ -169,6 +170,14 @@ let w =
         let transformed_w, s = Misc.transform w in
         let _ =
           Mat.save_txt ~out:(Printf.sprintf "%s/sim_norm" data_dir) (Mat.l2norm ~axis:1 s)
+        in
+        transformed_w)
+      else if nn_soc
+      then (
+        let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)) in
+        let transformed_w, s = Linalg.D.schur_tz w in
+        let _ =
+          Mat.save_txt ~out:(Printf.sprintf "%s/nn_w" data_dir) (Mat.l2norm ~axis:1 s)
         in
         transformed_w)
       else if lr

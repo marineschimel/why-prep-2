@@ -87,3 +87,19 @@ let pos_to_angles x y =
   let ct1 = Maths.(sqrt (1. -. sqr st1)) in
   let t1 = Maths.atan (st1 /. ct1) in
   t1, t2
+
+let remove_eigenvalues t =
+  let n = Mat.row_num t in
+  let arr_t = Mat.to_arrays t in
+  for i = 0 to n - 1 do
+    arr_t.(i).(i) <- 0.;
+    (* cancel the 2x2 blocks *)
+    if i < n - 1
+    then
+      if arr_t.(i + 1).(i) > 1e-5
+      then (
+        arr_t.(i).(i + 1) <- arr_t.(i).(i + 1) +. arr_t.(i + 1).(i);
+        arr_t.(i + 1).(i) <- 0.)
+  done;
+  let m = Mat.of_arrays arr_t in
+  Mat.triu ~k:1 m

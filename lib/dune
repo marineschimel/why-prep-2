@@ -5,7 +5,6 @@
   owl
   cmdargs
   lbfgs
-  owl-ode
   owl-opt-lbfgs
   arm
   owl-parameters

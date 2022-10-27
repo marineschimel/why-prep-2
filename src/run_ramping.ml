@@ -23,6 +23,7 @@ let save_all = Cmdargs.(check "-save_all")
 let soc = Cmdargs.(check "-soc")
 let opt_c = Cmdargs.(check "-soc")
 let sim_soc = Cmdargs.(check "-sim_soc")
+let nn_soc = Cmdargs.(check "-nn_soc")
 let skew = Cmdargs.(check "-skew")
 let triang = Cmdargs.(check "-triang")
 let lr = Cmdargs.(check "-lr")
@@ -171,6 +172,12 @@ let w =
           Mat.save_txt ~out:(Printf.sprintf "%s/sim_norm" data_dir) (Mat.l2norm ~axis:1 s)
         in
         transformed_w)
+      else if nn_soc
+      then (
+        let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)) in
+        let transformed_w, s = Linalg.D.schur_tz w in
+        let open Misc in
+        remove_eigenvalues transformed_w)
       else if lr
       then (
         let m = Mat.(u *@ transpose v) in
