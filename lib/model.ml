@@ -152,8 +152,8 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         else if opt
         then k >= 10 || Float.(pct_change < 1E-2)
         else if rerun
-        then (k > 10 && Float.(pct_change < 1E-3)) || k > 25
-        else (k > 10 && Float.(pct_change < 2E-4)) || k > 40
+        then (k > 10 && Float.(pct_change < 6E-5)) || k > 70
+        else (k > 10 && Float.(pct_change < 6E-5)) || k > 70
     in
     let us =
       match u_init with

@@ -1,9 +1,11 @@
 (executables
  (names
   run_soc
+  optimize_ab
   loss_across
   check
   gather
+  mini_abg
   eq_h2norm
   cbar_potency
   sample_2d

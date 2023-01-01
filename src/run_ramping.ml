@@ -93,13 +93,13 @@ let d_phi_x x = AD.Maths.(AD.d_requad (x / beta))
 let d2_phi_x x = AD.Maths.(F 1. / beta * AD.d2_requad (x / beta)) *)
 let link_f x = phi_x x
 let target i = targets.(i)
-let dt = 2E-3
+let dt = Cmdargs.(get_float "-dt" |> default 0.002)
 let lambda_prep = lambda *. scale_prep
 let lambda_mov = lambda *. scale_mov
 let n_out = 2
 let _n = 204
 let m = 200
-let tau = 150E-3
+let tau = Cmdargs.(get_float "-tau" |> default 0.150)
 let n_output = 2
 
 let _ =
@@ -111,28 +111,7 @@ let _ =
        (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-
-let t_preps =
-  [| 0.
-   ; 0.01
-   ; 0.025
-   ; 0.05
-   ; 0.07
-   ; 0.09
-   ; 0.1
-   ; 0.15
-   ; 0.2
-   ; 0.25
-   ; 0.3
-   ; 0.35
-   ; 0.4
-   ; 0.5
-   ; 0.6
-   ; 0.7
-   ; 0.8
-   ; 0.9
-   ; 1.0
-  |]
+let t_preps = [| 0.5 |]
 (* *)
 
 let u, v =
@@ -200,7 +179,14 @@ let w = C.broadcast' (fun () -> Mat.(load_txt (Printf.sprintf "%s/w" dir))) *)
 
 let c =
   C.broadcast' (fun () ->
-      if opt_c
+      let c =
+        Mat.(
+          load_txt
+            "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/final_results/ramping_soc/seed_02_prep/c")
+        |> AD.pack_arr
+      in
+      c)
+(*       if opt_c
       then (
         let c =
           Mat.(
@@ -215,15 +201,19 @@ let c =
                 "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/learn_c/eta_0.01_10/progress_121.readout.readout")
         in
         AD.Maths.(c / AD.pack_flt norm_c * F 0.07))
-      else AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m)
+      else (
+        
+      AD.Mat.gaussian ~sigma:Float.(rad_c / sqrt (of_int m)) 2 m) *)
 
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
 
-let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:15. m 1))
-(* let x0 =
+let x0 =
   C.broadcast' (fun () ->
-      let m = Mat.load_txt (in_dir "rates_0_0") in
-      AD.pack_arr (Mat.get_slice [ [ 0 ] ] m |> fun z -> Arr.reshape z [| -1; 1 |])) *)
+      let m =
+        Mat.load_txt
+          "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/final_results/ramping_soc/seed_02_mov/rates_2_500"
+      in
+      AD.pack_arr (Mat.get_slice [ [ 0 ] ] m |> fun z -> Arr.reshape z [| -1; 1 |]))
 
 let _ =
   C.root_perform (fun () ->
@@ -284,6 +274,26 @@ let x0 =
 
 let _ = Stdio.printf "N targets : %i %!" n_targets
 
+let short_tasks =
+  Array.init
+    (n_targets * Array.length t_preps)
+    ~f:(fun i ->
+      let n_time = i / n_targets in
+      let n_target = Int.rem i n_targets in
+      ( n_target
+      , Model.
+          { t_prep = t_preps.(n_time)
+          ; x0
+          ; t_movs = [| 0.4 |]
+          ; dt
+          ; t_hold = Some 0.2
+          ; t_pauses = None
+          ; scale_lambda = None
+          ; target = AD.pack_arr (target n_target)
+          ; theta0
+          ; tau
+          } ))
+
 let tasks =
   Array.init
     (n_targets * Array.length t_preps)
@@ -301,7 +311,7 @@ let tasks =
           ; scale_lambda = None
           ; target = AD.pack_arr (target n_target)
           ; theta0
-          ; tau = 150E-3
+          ; tau
           } ))
 
 let _ = Stdio.printf "Size of tasks : %i %!" (Array.length tasks)
@@ -344,6 +354,7 @@ let t_tot = 0.6
 
 module R = Readout
 
+(* Float.(dt /. 1E-3 *. 1000.) *)
 let dt_scaling = Float.(dt /. 1E-3 *. 1000.)
 
 let prms =
@@ -444,9 +455,9 @@ let save_results suffix xs us quus n_target n_prep task =
         (-1)
     , true )
   in
-  Owl.Mat.save_txt
+  (* Owl.Mat.save_txt
     ~out:(file "quus")
-    (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
+    (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1)); *)
   Owl.Mat.save_txt
     ~out:(file "summary")
     (Mat.of_array
@@ -473,12 +484,13 @@ let save_results suffix xs us quus n_target n_prep task =
     in
     AD.unpack_arr h
   in
-  Owl.Mat.save_txt ~out:(file "hands") hands;
-  Owl.Mat.save_txt ~out:(file "thetas") thetas;
+  (* Owl.Mat.save_txt ~out:(file "hands") hands;
+   *)
   Owl.Mat.save_txt ~out:(file "xs") xs;
   Owl.Mat.save_txt ~out:(file "us") us;
+  Owl.Mat.save_txt ~out:(file "thetas") thetas;
   Owl.Mat.save_txt ~out:(file "rates") rates;
-  Owl.Mat.save_txt ~out:(file "eff_us") (AD.unpack_arr (link_f (AD.pack_arr us)));
+  (* Owl.Mat.save_txt ~out:(file "eff_us") (AD.unpack_arr (link_f (AD.pack_arr us))); *)
   Owl.Mat.save_txt
     ~out:(file "torques")
     Mat.((rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
@@ -526,14 +538,20 @@ let _ =
 let () =
   let x0 = x0 in
   let _ = save_prms "" prms in
-  Array.iteri tasks ~f:(fun i (n_target, t) ->
+  Array.iteri short_tasks ~f:(fun i (n_target, t) ->
       if Int.(i % C.n_nodes = C.rank)
       then (
         try
           let n_prep = Float.to_int (t.t_prep /. dt) in
           let t_prep_int = Float.to_int (1000. *. t.t_prep) in
           let xs, us, l, quus, _ =
-            I.solve ~u_init:Mat.(gaussian ~sigma:0. 10001 m) ~n:(m + 4) ~m ~x0 ~prms t
+            I.solve
+              ~u_init:Mat.(gaussian ~sigma:0.000001 10001 m)
+              ~n:(m + 4)
+              ~m
+              ~x0
+              ~prms
+              t
           in
           let () =
             save_results

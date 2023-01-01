@@ -20,7 +20,7 @@ let in_dir s = Printf.sprintf "%s/%s" dir s
 let seed = Cmdargs.(get_int "-seed" |> force ~usage:"-seed")
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
-let pause = Cmdargs.(get_float "-pause" |> default 0.5)
+let pause = Cmdargs.(get_float "-pause" |> default 0.6)
 let pause_coeff = Cmdargs.(get_float "-pause_coeff" |> default 1.)
 let save_all = Cmdargs.(check "-save_all")
 
@@ -83,7 +83,7 @@ let d_phi_x x = AD.Maths.(AD.d_requad (x / beta))
 let d2_phi_x x = AD.Maths.(F 1. / beta * AD.d2_requad (x / beta)) *)
 let link_f x = phi_x x
 let double_target i = double_targets.(i)
-let dt = 2E-3
+let dt = Cmdargs.(get_float "-dt" |> default 2E-3)
 
 (*angle is in hand space (arctan ((y2-y1)/(x2-x1))) and
 peak_speed is peak radial speed and length = *)

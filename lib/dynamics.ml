@@ -251,9 +251,10 @@ struct
     let c = readout in
     let bias = Owl_parameters.extract theta.bias in
     let tau = task.tau in
+    let tau_b = 150E-3 in
     let a = Owl_parameters.extract theta.a in
     let a = AD.Maths.(a / AD.F tau) in
-    let b = AD.Maths.(b / AD.F tau) in
+    let b = AD.Maths.(b / AD.F tau_b) in
     let x_init = task.x0 |> fun z -> AD.Maths.get_slice [ []; [ 4; -1 ] ] z in
     let dt = task.dt in
     let _dt = AD.F dt in
@@ -263,7 +264,9 @@ struct
       let xst = AD.Maths.transpose xs in
       let s = Arm.pack_state thetas in
       let dx =
-        AD.Maths.(((phi_x xs *@ a) - (xs / AD.F tau) + (phi_u (u + bias) *@ b)) * _dt)
+        AD.Maths.(
+          ((phi_x xs *@ a) - (xs / AD.F tau) + (phi_u (u + (bias * F tau_b / F tau)) *@ b))
+          * _dt)
       in
       let tau =
         let r = AD.Maths.(phi_x xst - (F 0. * phi_x (transpose x_init))) in
@@ -335,7 +338,8 @@ struct
       let m = AD.Mat.col_num b in
       let dt = AD.F task.dt in
       let tau = task.tau in
-      let b = AD.Maths.(b / AD.F tau) in
+      let tau_b = 150E-3 in
+      let b = AD.Maths.(b / AD.F tau_b) in
       fun ~k:_ ~x:_ ~u ->
         let mat =
           AD.Maths.concatenate

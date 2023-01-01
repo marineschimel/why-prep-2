@@ -19,7 +19,7 @@ let results_dir =
   Cmdargs.(get_string "-rdir" |> force ~usage:"-rdir [where to save the key results]")
 
 let nonlin = if Cmdargs.(check "-tanh") then "tanh" else "relu"
-let save_all = Cmdargs.(check "-save_all")
+let save_all = true
 let soc = Cmdargs.(check "-soc")
 let sim_soc = Cmdargs.(check "-sim_soc")
 let nn_soc = Cmdargs.(check "-nn_soc")
@@ -39,6 +39,7 @@ let prep_time = Cmdargs.(get_int "-prep_time" |> default 100)
 let in_dir s = Printf.sprintf "%s/%s" dir s
 let in_data_dir s = Printf.sprintf "%s/%s" data_dir s
 let n_targets = 8
+let dt = Cmdargs.(get_float "-dt" |> default 0.002)
 
 let targets =
   C.broadcast' (fun () ->
@@ -100,7 +101,7 @@ let lambda_mov = lambda *. scale_mov
 let n_out = 2
 let _n = 204
 let m = 200
-let tau = 150E-3
+let tau = Cmdargs.(get_float "-tau" |> default 0.150)
 let n_output = 2
 
 let _ =
@@ -112,7 +113,7 @@ let _ =
        (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-let t_preps = [| 0.07; 0.1; 0.3; 0.5; 0.8; 0.05; 0.8; 0.7 |]
+let t_preps = [| 0.5 |]
 
 (* ; 0.01
    ; 0.025
@@ -204,7 +205,7 @@ let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c"
 
 let x0 =
   C.broadcast' (fun () ->
-      let m = Mat.load_txt (in_dir "rates_0_0") in
+      let m = Mat.load_txt (in_dir "xs_1_0") in
       AD.pack_arr (Mat.get_slice [ [ 0 ] ] m |> fun z -> Arr.reshape z [| -1; 1 |]))
 
 let _ =
@@ -283,7 +284,7 @@ let tasks =
           ; scale_lambda = None
           ; target = AD.pack_arr (target n_target)
           ; theta0
-          ; tau = 150E-3
+          ; tau
           } ))
 
 let _ = Stdio.printf "Size of tasks : %i %!" (Array.length tasks)
@@ -426,9 +427,9 @@ let save_results suffix xs us quus n_target n_prep task =
         (-1)
     , true )
   in
-  Owl.Mat.save_txt
+  (* Owl.Mat.save_txt
     ~out:(file "quus")
-    (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1));
+    (Mat.of_array [| input_cost_prep; input_cost_mov; input_cost_tot |] 1 (-1)); *)
   Owl.Mat.save_txt
     ~out:(file "summary")
     (Mat.of_array
@@ -460,7 +461,7 @@ let save_results suffix xs us quus n_target n_prep task =
   Owl.Mat.save_txt ~out:(file "xs") xs;
   Owl.Mat.save_txt ~out:(file "us") us;
   Owl.Mat.save_txt ~out:(file "rates") rates;
-  Owl.Mat.save_txt ~out:(file "eff_us") (AD.unpack_arr (link_f (AD.pack_arr us)));
+  (* Owl.Mat.save_txt ~out:(file "eff_us") (AD.unpack_arr (link_f (AD.pack_arr us))); *)
   Owl.Mat.save_txt
     ~out:(file "torques")
     Mat.((rates - AD.unpack_arr (link_f (AD.pack_arr x0))) *@ transpose (AD.unpack_arr c))
@@ -472,38 +473,27 @@ let () =
       if Int.(i % C.n_nodes = C.rank)
       then (
         try
-          if (* if Int.(n_target = 2) *)
-             Int.(
-               n_target = tgt_to_rerun && Int.(of_float (t.t_prep *. 1000.)) = prep_time)
-          then (
-            let n_prep = Float.to_int (t.t_prep /. dt) in
-            let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-            let xs, us, l, quus, _ =
-              I.solve
-                ~u_init:Mat.(gaussian ~sigma:0.0001 2001 m)
-                ~n:(m + 4)
-                ~m
-                ~x0
-                ~prms
-                ~rerun:true
-                t
-            in
-            let () =
-              save_results
-                (Printf.sprintf "%i_%i" n_target t_prep_int)
-                xs
-                us
-                quus
-                n_target
-                n_prep
-                t
-            in
-            if save_all
-            then (
-              let _ = Stdio.printf "success %i %i" n_target t_prep_int in
-              Mat.save_txt
-                ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
-                (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
-              save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t))
+          let u_init, n_prep, t_prep =
+            let u_init = Mat.(gaussian ~sigma:0.000001 10001 m) in
+            u_init, Int.(of_float Float.(t.t_prep /. dt)), t.t_prep
+          in
+          let _ = Stdio.printf "running %i %i %!" i n_prep in
+          let t_prep_int = Float.to_int (1000. *. t_prep) in
+          let xs, us, l, quus, _ =
+            I.solve ~u_init ~n:(m + 4) ~m ~x0 ~prms ~rerun:true t
+          in
+          let () =
+            save_results
+              (Printf.sprintf "%i_%i" n_target t_prep_int)
+              xs
+              us
+              quus
+              n_target
+              n_prep
+              t
+          in
+          Mat.save_txt
+            ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
+            (Mat.of_array [| AD.unpack_flt l |] 1 (-1))
         with
         | e -> Stdio.printf "%s : fail target %i" (Exn.to_string e) n_target))
