@@ -1,8 +1,11 @@
 (executables
  (names
   run_soc
+  run_smooth_prior
   optimize_ab
+  eval_rad_lin
   loss_across
+  small_ab_check
   check
   gather
   mini_abg

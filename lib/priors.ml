@@ -446,3 +446,46 @@ module Gaussian_Prior = struct
   let neg_jac_t = None
   let neg_hess_t = None
 end
+
+module Temporal_Gaussian = struct
+  module P = Owl_parameters.Make (Gaussian_P)
+  open Gaussian_P
+
+  let requires_linesearch = false
+
+  let init ?(am = 1.) ~lambda (set : Owl_parameters.setter) =
+    { lambda_prep = set (AD.F lambda); lambda_mov = set (AD.F (lambda *. am)) }
+
+  (* returns a column vector *)
+
+  let neg_logp_t ~prms ~task =
+    let t_prep = task.t_prep in
+    let dt = task.dt in
+    let n_prep = Float.to_int (t_prep /. dt) in
+    let lp = Owl_parameters.extract prms.lambda_prep in
+    let lm = Owl_parameters.extract prms.lambda_mov in
+    let sl =
+      match task.scale_lambda with
+      | None -> AD.F 1.
+      | Some sl -> AD.F sl
+    in
+    let n = AD.Mat.col_num task.x0 - 4 in
+    fun ~k ~x ~u ->
+      let xs = AD.Maths.get_slice [ []; [ 4; -1 ] ] x in
+      let us_pre = AD.Maths.get_slice [ []; [ 0; Int.(n / 2) - 1 ] ] xs in
+      (* let u_eff = AD.Maths.(u *@ b) in
+      let pre_u_eff = AD.Maths.(us_pre *@ b) in *)
+      let lam = if k < n_prep then AD.Maths.(sl * lp) else AD.Maths.(sl * lm) in
+      (* let _ =
+        Stdio.printf
+          "caattt %i %i %i %i"
+          (AD.Mat.row_num u)
+          (AD.Mat.col_num u)
+          (AD.Mat.row_num us_pre)
+          (AD.Mat.col_num us_pre)
+      in *)
+      AD.Maths.(F 0.5 * (lam * l2norm_sqr' AD.Maths.(u - us_pre)))
+
+  let neg_jac_t = None
+  let neg_hess_t = None
+end

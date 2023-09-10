@@ -93,16 +93,19 @@ module ILQR (U : Prior_T) (D : Dynamics_T) (L : Likelihood_T) = struct
         Option.map U.neg_hess_t ~f:(fun neg_hess_t ~theta ->
             neg_hess_t ~prms:theta.generative.prior ~task)
 
-      let rl_ux = Some (fun ~theta:_ ~k:_ ~x:_ ~u:_ -> AD.Mat.zeros m n)
+      let rl_ux = None
+      (* let rl_x ~theta ~k ~x ~u= rl_x ~theta in
+          AD.jacobian (fun x -> rl_x ~k ~x ~u) x in AD.jacobian (fun u -> rl_x ~k ~x ~u) *)
+
+      (* Some (fun ~theta:_ ~k:_ ~x:_ ~u:_ -> AD.Mat.zeros m n) *)
       let final_cost ~theta:_ ~k:_ ~x:_ = AD.F 0.
+      let fl_x = None
+      (* let z = AD.Mat.zeros 1 n in
+        Some (fun ~theta:_ ~k:_ ~x:_ -> z) *)
 
-      let fl_x =
-        let z = AD.Mat.zeros 1 n in
-        Some (fun ~theta:_ ~k:_ ~x:_ -> z)
-
-      let fl_xx =
-        let z = AD.Mat.zeros n n in
-        Some (fun ~theta:_ ~k:_ ~x:_ -> z)
+      let fl_xx = None
+      (* let z = AD.Mat.zeros n n in
+        Some (fun ~theta:_ ~k:_ ~x:_ -> z) *)
 
       let dyn ~theta =
         let dyna =

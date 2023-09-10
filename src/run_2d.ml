@@ -46,7 +46,7 @@ let target = Mat.of_array [| 20.; 0. |] 1 (-1)
 
 let phi_t t = AD.Maths.(t ** F 2.)
 let phi_x x = x
-let d_phi_x x = AD.Maths.(F 0.5 * (F 1. + (F 0. * x)))
+let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
 let d2_phi_x x = AD.Maths.(diagm (F 0. * x))
 let link_f x = phi_x x
 let dt = 2E-3
@@ -283,7 +283,7 @@ let () =
         let prep_idx =
           let us_prep = AD.Maths.get_slice [ [ 0; n_prep - 1 ] ] us in
           let us_mov = AD.Maths.get_slice [ [ n_prep; -1 ] ] us in
-          AD.Maths.(l2norm_sqr' us_prep / l2norm_sqr' us_mov) |> AD.unpack_flt
+          AD.Maths.(l2norm' us_prep / l2norm' us_mov) |> AD.unpack_flt
         in
         let () =
           save_results

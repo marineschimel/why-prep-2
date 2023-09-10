@@ -56,17 +56,9 @@ let phi_t t = AD.Maths.(t ** exponent)
 let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
 let d2_phi_x x = AD.Maths.(diagm (F 0. * x)) *)
 let _ = if nonlin == "tanh" then Stdio.printf "tanh nonlinearity"
-let phi_x x = if nonlin == "tanh" then AD.Maths.(tanh x) else AD.Maths.relu x
-
-let d_phi_x x =
-  if nonlin == "tanh"
-  then AD.Maths.(F 1. - (F 2. * sqr (tanh x)))
-  else AD.Maths.(F 0.5 * (F 1. + signum x))
-
-let d2_phi_x x =
-  if nonlin == "tanh"
-  then AD.Maths.(F (-2.) * tanh x * d_phi_x x)
-  else AD.Maths.(diagm (F 0. * x))
+let phi_x x = AD.Maths.(tanh x)
+let d_phi_x x = AD.Maths.(F 1. - (F 2. * sqr (tanh x)))
+let d2_phi_x x = AD.Maths.(F (-2.) * tanh x * d_phi_x x)
 
 (* let phi_x x = AD.Maths.(F 5. * tanh x)
 let d_phi_x x = AD.Maths.(F 5. * (F 1. - F 2. * (sqr (tanh x))))
@@ -369,7 +361,7 @@ let attempt_1 =
         try
           let n_prep = Float.to_int (t.t_prep /. dt) in
           let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-          let xs, us, l, _ =
+          let xs, us, l, _, _ =
             I.solve ~u_init:Mat.(gaussian ~sigma:0. 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
           in
           let idx, n_target, summary =
@@ -405,7 +397,7 @@ let _ =
         then (
           let n_prep = Float.to_int (1000. *. t.t_prep /. dt) in
           let t_prep_int = Float.to_int (1000. *. t.t_prep) in
-          let xs, us, l, _ =
+          let xs, us, l, _, _ =
             I.solve ~u_init:Mat.(gaussian ~sigma:0.0001 2001 m) ~n:(m + 4) ~m ~x0 ~prms t
           in
           if save_all

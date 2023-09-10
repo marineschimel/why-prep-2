@@ -815,7 +815,7 @@ struct
       let thetas = AD.Maths.get_slice [ []; [ 0; 3 ] ] z_t in
       let theta_pos = AD.Maths.get_slice [ []; [ 0; 1 ] ] thetas in
       let theta_vel = AD.Maths.get_slice [ []; [ 2; 3 ] ] thetas in
-      let x_t = AD.Maths.get_slice [ []; [ 4; -1 ] ] z_t in
+      let x_t = AD.Maths.get_slice [ []; [ 4; -201 ] ] z_t in
       let x_t = X.phi_x x_t in
       if k < n_prep
       then (

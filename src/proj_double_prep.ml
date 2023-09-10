@@ -14,7 +14,7 @@ let in_dir seed s = Printf.sprintf "%s/%s" dir s
 (*Printf.sprintf "%s/seed_%i/%s" dir seed s*)
 let in_double_dir _seed s =
   Printf.sprintf
-    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/final_results/ramping_soc/seed_00_0.150/double_ramping/pause_0.6_0.001/%s"
+    "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/final_results/ramping_soc/seed_00_0.150/double_ramping/pause_0.6_1.0_0.001/%s"
     (* Printf.sprintf
     "/home/mmcs3/rds/rds-t2-cs156-T7o4pEA8QoU/mmcs3/final_results/ramping_soc/seed_0_mixed/double_ramping3/pause_0.5_1.0_0.0000005_1.0_10.0/%s" *)
     s

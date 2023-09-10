@@ -31,7 +31,6 @@ let rad_c = Cmdargs.(get_float "-rad_c" |> default 0.05)
 let rad_w = Cmdargs.(get_float "-rad_w" |> default 0.5)
 let tau_mov = Cmdargs.(get_float "-tau_mov" |> default 600.)
 let t_coeff = Cmdargs.(get_float "-t_coeff" |> default 1.)
-let exponent = Cmdargs.(get_int "-exponent" |> force ~usage:"exponent")
 let n_lr = Cmdargs.(get_int "-n_lr" |> default 1)
 let sa_tgt = Cmdargs.(get_float "-sa_tgt" |> default 1.)
 let seed = Cmdargs.(get_int "-seed" |> default 1)
@@ -66,8 +65,7 @@ let _ =
       Mat.save_txt ~out:(in_dir "hand_targets") (Mat.concatenate ~axis:0 hand_targets))
 
 let beta = AD.F 1E-2
-let exponent = AD.F (Float.of_int exponent)
-let phi_t t = AD.Maths.(t ** exponent)
+let phi_t t = AD.Maths.(sqr t)
 
 (* let phi_x x = x
 let d_phi_x x = AD.Maths.(F 1. + (F 0. * x))
@@ -97,7 +95,7 @@ let dt = Cmdargs.(get_float "-dt" |> default 0.002)
 let lambda_prep = lambda *. scale_prep
 let lambda_mov = lambda *. scale_mov
 let n_out = 2
-let _n = 204
+let _n = 404
 let m = 200
 let tau = Cmdargs.(get_float "-tau" |> default 0.150)
 let n_output = 2
@@ -111,28 +109,7 @@ let _ =
        (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-
-let t_preps =
-  [| 0.
-   ; 0.01
-   ; 0.025
-   ; 0.05
-   ; 0.07
-   ; 0.09
-   ; 0.1
-   ; 0.15
-   ; 0.2
-   ; 0.25
-   ; 0.3
-   ; 0.35
-   ; 0.4
-   ; 0.5
-   ; 0.6
-   ; 0.7
-   ; 0.8
-   ; 0.9
-   ; 1.0
-  |]
+let t_preps = [| 0.3; 0.1; 0.2; 0.05; 0. |]
 (* *)
 
 let u, v =
@@ -229,7 +206,8 @@ let c =
 
 (* let c = C.broadcast' (fun () -> AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/c" dir))) *)
 
-let x0 = C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:10. m 1))
+let x0 =
+  C.broadcast' (fun () -> AD.Maths.(F 0.5 * AD.Mat.uniform ~a:5. ~b:10. Int.(2 * m) 1))
 (* C.broadcast' (fun () ->
       let m =
         Mat.load_txt
@@ -250,7 +228,10 @@ let _ =
   C.broadcast' (fun () ->
       AD.Maths.transpose (AD.pack_arr Mat.(load_txt (Printf.sprintf "%s/x0" dir)))) *)
 
-let u0 = phi_x x0
+let u0 =
+  let x00 = AD.Maths.get_slice [ [ 200; -1 ] ] x0 in
+  phi_x x00
+
 let norm_u0 = AD.Maths.(l2norm_sqr' u0)
 let c = AD.Maths.(c - (c *@ u0 *@ transpose u0 / norm_u0))
 
@@ -289,7 +270,8 @@ what about one population receiving modulated inputs about the target?
 
 let baseline_input =
   C.broadcast' (fun () ->
-      AD.Maths.(neg ((AD.pack_arr w *@ link_f x0) - x0)) |> AD.Maths.transpose)
+      let x00 = AD.Maths.get_slice [ [ 200; -1 ] ] x0 in
+      AD.Maths.(neg ((AD.pack_arr w *@ link_f x00) - x00)) |> AD.Maths.transpose)
 
 let x0 =
   AD.Maths.concatenate [| AD.Maths.transpose theta0; x0 |] ~axis:0 |> AD.Maths.transpose
@@ -351,7 +333,7 @@ else if Float.(x > neg epsilon)  then ((x +. epsilon)/.(2. *. epsilon)) else 0.)
 let d2_phi_x x = let x = AD.unpack_arr x in let y = Mat.map (fun x -> if Float.(x > epsilon) then 0. 
 else if Float.(x > neg epsilon) then Float.(1./(2. * epsilon)) else 0.) x in AD.pack_arr y *)
 
-module U = Priors.Gaussian
+module U = Priors.Temporal_Gaussian
 (* 
 _Phi (struct
 let phi_u x = phi_x x
@@ -359,7 +341,7 @@ let phi_u x = phi_x x
   let d2_phi_u x = d2_phi_x x
 end) *)
 
-module D0 = Dynamics.Arm_Plus (struct
+module D0 = Dynamics.Arm_Integrator (struct
   let phi_x x = phi_x x
   let d_phi_x x = d_phi_x x
   let phi_u x = x
@@ -592,5 +574,5 @@ let () =
               ~out:(in_dir (Printf.sprintf "loss_%i_%i" n_target t_prep_int))
               (Mat.of_array [| AD.unpack_flt l |] 1 (-1));
             save_task (Printf.sprintf "%i_%i" n_target t_prep_int) t)
-        with
+         with
         | _ -> Stdio.printf "fail %i" n_target))

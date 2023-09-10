@@ -113,7 +113,7 @@ let _ =
        (-1))
 
 let theta0 = Mat.of_arrays [| [| 0.174533; 2.50532; 0.; 0. |] |] |> AD.pack_arr
-let t_preps = [| 0.5 |]
+let t_preps = [| 0.5; 0.5; 0.5; 0.5 |]
 
 (* ; 0.01
    ; 0.025
@@ -474,7 +474,7 @@ let () =
       then (
         try
           let u_init, n_prep, t_prep =
-            let u_init = Mat.(gaussian ~sigma:0.000001 10001 m) in
+            let u_init = Mat.(gaussian ~sigma:0.001 10001 m) in
             u_init, Int.(of_float Float.(t.t_prep /. dt)), t.t_prep
           in
           let _ = Stdio.printf "running %i %i %!" i n_prep in
