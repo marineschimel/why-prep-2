@@ -47,6 +47,7 @@
   run_baseline_random
   run_sparse_soc
   run_double
+  run_mpc
   analyses
   eval_rads_2
   proj_double_prep

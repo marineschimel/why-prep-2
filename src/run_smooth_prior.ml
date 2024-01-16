@@ -139,35 +139,7 @@ let get_sa m =
 
 let w =
   C.broadcast' (fun () ->
-      if soc
-      then Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed))
-      else if sim_soc
-      then (
-        let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)) in
-        let transformed_w, s = Misc.transform w in
-        let _ =
-          Mat.save_txt ~out:(Printf.sprintf "%s/sim_norm" data_dir) (Mat.l2norm ~axis:1 s)
-        in
-        transformed_w)
-      else if nn_soc
-      then (
-        let w = Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)) in
-        let transformed_w, s = Linalg.D.schur_tz w in
-        let open Misc in
-        remove_eigenvalues transformed_w)
-      else if lr
-      then (
-        let m = Mat.(u *@ transpose v) in
-        let max_eig = get_sa m in
-        if Float.(sa_tgt < 1.) then Mat.(m /$ Float.(max_eig *. sa_tgt)) else m)
-      else (
-        let m = Mat.gaussian ~sigma:Float.(rad_w /. sqrt (of_int m)) m m in
-        if skew
-        then Mat.((m - transpose m) /$ 2.)
-        else if triang
-        then Mat.triu ~k:1 m
-        else m))
-
+      Mat.(load_txt (Printf.sprintf "%s/w_rec_%i" data_dir seed)))
 (* let _ =
   C.root_perform (fun () ->
       Mat.save_txt ~out:(Printf.sprintf "%s/w" dir) (Mat.gaussian ~sigma:0.05 m m))
