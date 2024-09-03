@@ -1,7 +1,7 @@
 # Why prepare?
 
-This is a copy of the initial why-prep repo with a clean history!
-It contains the code necessary to run all the simulations of the why-prep project, which looks at the optimal control strategy of a delayed reach.
+This repository contains code to run simulations and analyses corresponding to the paper "When and why does motor preparation arise in recurrent neural network models of motor control?" (Schimel et al., 2023, eLife). 
+
 # Dependencies
 - Owl/Owl-ode/Owl-opt
 - Cmadargs : https://github.com/hennequin-lab/cmdargs
